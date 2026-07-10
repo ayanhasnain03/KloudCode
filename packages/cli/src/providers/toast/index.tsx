@@ -16,6 +16,7 @@ import type { ToastOptions, ToastVariant } from "../types";
 import { DEFAULT_DURATION } from "../types";
 import { toastIcons, toastLabels } from "../../theme";
 import { useTheme } from "../theme";
+import { StatusIconBadge } from "../../components/messages/status-icon-badge";
 
 export type ToastContextValue = {
   show: (options: ToastOptions) => void;
@@ -147,18 +148,7 @@ function Toast({ currentToast }: ToastProps) {
           paddingX={2}
           paddingY={1}
         >
-          <box
-            width={3}
-            height={1}
-            justifyContent="center"
-            alignItems="center"
-            backgroundColor={colors.dialogSurface}
-            border
-            borderStyle="rounded"
-            borderColor={colors.border}
-          >
-            <text fg={accent}>{icon}</text>
-          </box>
+          <StatusIconBadge icon={icon} color={accent} />
 
           <box flexDirection="column" flexGrow={1} gap={0}>
             <text

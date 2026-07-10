@@ -14,7 +14,8 @@ import { useTheme } from "../providers/theme";
 type Props = {
   onSubmit: (text: string) => void;
   disabled?: boolean;
-  width?: number;
+  loading?: boolean;
+  width?: number | `${number}%`;
 };
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
@@ -27,7 +28,8 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
 export function InputBar({
   onSubmit,
   disabled = false,
-  width = 64,
+  loading = false,
+  width = "100%",
 }: Props) {
   const {
     resolveCommand,
@@ -211,7 +213,7 @@ export function InputBar({
             }}
           />
 
-          <StatusBar />
+          <StatusBar loading={loading} />
         </box>
       </box>
     </box>
