@@ -2,5 +2,7 @@ import type { ReactNode } from "react";
 
 export type DialogConfig = {
   title: string;
-  children: ReactNode
+  description?: string;
+  children: ReactNode;
+  hints?: string;
 }

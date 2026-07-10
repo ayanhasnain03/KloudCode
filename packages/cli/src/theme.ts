@@ -628,3 +628,9 @@ export const toastIcons = {
   error: "✕",
   info: "◈",
 } as const;
+
+export const toastLabels = {
+  success: "Success",
+  error: "Error",
+  info: "Notice",
+} as const;

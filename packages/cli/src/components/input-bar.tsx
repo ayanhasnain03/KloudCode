@@ -72,7 +72,7 @@ export function InputBar({
         textarea.insertText(`${command.value} `);
       }
     },
-    [renderer, toast]
+    [renderer, toast, dialog]
   );
 
   // ----------------------------
