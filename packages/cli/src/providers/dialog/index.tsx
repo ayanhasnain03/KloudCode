@@ -84,7 +84,8 @@ function Dialog({ currentDialog, close }: DialogProps) {
     return null;
   }
 
-  const { title, children } = currentDialog;
+  const { title, description, children, hints } = currentDialog;
+  const dialogWidth = Math.min(56, dimensions.width - 8);
 
   return (
     <box
@@ -95,32 +96,63 @@ function Dialog({ currentDialog, close }: DialogProps) {
       height={dimensions.height}
       justifyContent="center"
       alignItems="center"
-      backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
+      backgroundColor={RGBA.fromInts(0, 0, 0, 165)}
       zIndex={100}
       onMouseDown={() => close()}
     >
       <box
-        width={Math.min(60, dimensions.width - 4)}
-        height="auto"
-        backgroundColor={colors.dialogSurface}
-        paddingX={4}
-        paddingY={1}
-        flexDirection="column"
-        gap={1}
+        width={dialogWidth}
+        flexDirection="row"
         onMouseDown={(e) => e.stopPropagation()}
       >
+        <box width={1} backgroundColor={colors.primary} />
+
         <box
-          paddingBottom={1}
-          flexDirection="row"
-          alignItems="center"
-          justifyContent="space-between"
+          flexGrow={1}
+          flexDirection="column"
+          backgroundColor={colors.dialogSurface}
+          border
+          borderStyle="rounded"
+          borderColor={colors.border}
+          paddingX={2}
+          paddingY={1}
+          gap={1}
         >
-          <text attributes={TextAttributes.BOLD} fg={colors.text}>{title}</text>
-          <text attributes={TextAttributes.DIM} fg={colors.textDim} onMouseDown={() => close()}>
-            esc
-          </text>
+          <box
+            flexDirection="row"
+            alignItems="flex-start"
+            justifyContent="space-between"
+          >
+            <box flexDirection="column" gap={0} flexGrow={1}>
+              <text attributes={TextAttributes.BOLD} fg={colors.text}>
+                {title}
+              </text>
+              {description && (
+                <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+                  {description}
+                </text>
+              )}
+            </box>
+
+            <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+              esc
+            </text>
+          </box>
+
+          <box height={1} width="100%" backgroundColor={colors.borderSoft} />
+
+          <box flexGrow={1}>
+            {children}
+          </box>
+
+          {hints && (
+            <box flexDirection="row" justifyContent="center">
+              <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+                {hints}
+              </text>
+            </box>
+          )}
         </box>
-        <box flexGrow={1}>{children}</box>
       </box>
     </box>
   );

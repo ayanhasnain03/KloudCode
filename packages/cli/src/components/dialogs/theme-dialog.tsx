@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react"
+import { TextAttributes } from "@opentui/core"
 import { useDialog } from "../../providers/dialog"
 import { useTheme } from "../../providers/theme"
 import { DialogSearchList } from "../dialog-search-list"
@@ -38,19 +39,34 @@ export const ThemeDialogContent = () => {
   const { colors } = useTheme();
 
   return (
-    <DialogSearchList items={THEMES} onSelect={handleSelect} onHighlight={handleHighlight} filterFn={(t, query) => t.name.toLowerCase().includes(query.toLowerCase())} renderItem={(theme, isSelected) => (
-      <text selectable={false} fg={isSelected ? colors.background : colors.text}>
-        {theme.name === originalThemeRef.current.name
-          ? "\u0020\u2022\u0020"
-          : "\u0020\u0020\u0020"}
-        {theme.name}
-      </text>
-
-    )}
+    <DialogSearchList
+      items={THEMES}
+      onSelect={handleSelect}
+      onHighlight={handleHighlight}
+      filterFn={(t, query) => t.name.toLowerCase().includes(query.toLowerCase())}
+      renderItem={(theme, isSelected) => {
+        const isActive = theme.name === originalThemeRef.current.name;
+        return (
+          <box flexDirection="row" gap={1} alignItems="center">
+            <text
+              selectable={false}
+              fg={isActive ? colors.primary : colors.textGhost}
+            >
+              {isActive ? "●" : "·"}
+            </text>
+            <text
+              selectable={false}
+              attributes={isSelected ? TextAttributes.BOLD : undefined}
+              fg={isSelected ? colors.text : colors.textMuted}
+            >
+              {theme.name}
+            </text>
+          </box>
+        );
+      }}
       getKey={(t) => t.name}
-      placeholder="Search themes"
+      placeholder="Search themes..."
       emptyText="No matching themes"
-
     />
   )
 }

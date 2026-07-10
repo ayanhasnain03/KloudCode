@@ -9,7 +9,9 @@ export const COMMANDS: Command[] = [
     action: (ctx) => {
 
       ctx.toast.show({
-        message: "Starting new conversation..."
+        title: "New conversation",
+        message: "Ready when you are.",
+        variant: "success",
       })
     }
   },
@@ -19,12 +21,13 @@ export const COMMANDS: Command[] = [
     value: "/agents",
     action: (ctx) => {
       ctx.dialog.open({
-        title: "Select your agent",
+        title: "Select Agent",
+        description: "Choose the agent best suited for your task",
         children: (
           <text>
-            Agent Dialog
+            Agent selection coming soon.
           </text>
-        )
+        ),
       })
     },
   },
@@ -49,8 +52,10 @@ export const COMMANDS: Command[] = [
     value: "/theme",
     action: (ctx) => {
       ctx.dialog.open({
-        title: "Select Theme",
-        children: <ThemeDialogContent />
+        title: "Color Theme",
+        description: "Preview instantly, confirm with Enter",
+        children: <ThemeDialogContent />,
+        hints: "↑↓ navigate · enter select",
       })
     },
   },

@@ -90,19 +90,42 @@ export function DialogSearchList<T>({
   });
 
   return (
-    <box flexDirection="column" gap={1}>
-      <input
-        ref={inputRef}
-        placeholder={placeholder}
-        focused
-        onContentChange={handleContentChange}
-      />
-      {filtered.length === 0 ? (
-        <text attributes={TextAttributes.DIM} fg={colors.textDim}>
-          {emptyText}
+    <box
+      flexDirection="column"
+      border
+      borderStyle="rounded"
+      borderColor={colors.borderSoft}
+      backgroundColor={colors.surface}
+    >
+      <box
+        flexDirection="row"
+        alignItems="center"
+        gap={1}
+        paddingX={1}
+      >
+        <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+          /
         </text>
+        <box flexGrow={1}>
+          <input
+            ref={inputRef}
+            placeholder={placeholder}
+            focused
+            onContentChange={handleContentChange}
+          />
+        </box>
+      </box>
+
+      <box height={1} width="100%" backgroundColor={colors.borderSoft} />
+
+      {filtered.length === 0 ? (
+        <box paddingX={1} paddingY={1}>
+          <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+            {emptyText}
+          </text>
+        </box>
       ) : (
-        <scrollbox ref={scrollRef} height={visibleHeight}>
+        <scrollbox ref={scrollRef} height={visibleHeight} paddingY={0}>
           {filtered.map((item, i) => {
             const isSelected = i === selectedIndex;
             return (
@@ -111,14 +134,22 @@ export function DialogSearchList<T>({
                 flexDirection="row"
                 height={1}
                 overflow="hidden"
-                backgroundColor={isSelected ? colors.accent : undefined}
+                backgroundColor={isSelected ? colors.accentMuted : undefined}
                 onMouseMove={() => {
                   setSelectedIndex(i);
                   if (onHighlight) onHighlight(item);
                 }}
                 onMouseDown={() => onSelect(item)}
               >
-                {renderItem(item, isSelected)}
+                <box
+                  flexGrow={1}
+                  flexDirection="row"
+                  alignItems="center"
+                  paddingX={1}
+                  gap={1}
+                >
+                  {renderItem(item, isSelected)}
+                </box>
               </box>
             )
           })}

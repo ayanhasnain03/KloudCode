@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   useCallback,
+  useEffect,
 } from "react";
 
 import type { ReactNode } from "react";
@@ -13,7 +14,7 @@ import { useTerminalDimensions } from "@opentui/react";
 import type { ToastOptions, ToastVariant } from "../types";
 
 import { DEFAULT_DURATION } from "../types";
-import { toastIcons } from "../../theme";
+import { toastIcons, toastLabels } from "../../theme";
 import { useTheme } from "../theme";
 
 export type ToastContextValue = {
@@ -87,6 +88,26 @@ type ToastProps = {
 function Toast({ currentToast }: ToastProps) {
   const { width } = useTerminalDimensions();
   const { colors } = useTheme();
+  const [progress, setProgress] = useState(1);
+
+  useEffect(() => {
+    if (!currentToast) {
+      setProgress(1);
+      return;
+    }
+
+    const duration = currentToast.duration ?? DEFAULT_DURATION;
+    const startedAt = Date.now();
+
+    const tick = () => {
+      const elapsed = Date.now() - startedAt;
+      setProgress(Math.max(0, 1 - elapsed / duration));
+    };
+
+    tick();
+    const interval = setInterval(tick, 40);
+    return () => clearInterval(interval);
+  }, [currentToast]);
 
   if (!currentToast) {
     return null;
@@ -95,8 +116,10 @@ function Toast({ currentToast }: ToastProps) {
   const variant: ToastVariant = currentToast.variant ?? "info";
   const accent = colors[variant];
   const icon = toastIcons[variant];
-  const toastWidth = Math.max(28, Math.min(48, width - 8));
+  const label = toastLabels[variant];
+  const toastWidth = Math.max(32, Math.min(52, width - 8));
   const hasTitle = Boolean(currentToast.title);
+  const progressWidth = Math.max(0, Math.round((toastWidth - 2) * progress));
 
   return (
     <box
@@ -105,6 +128,7 @@ function Toast({ currentToast }: ToastProps) {
       right={2}
       width={toastWidth}
       flexDirection="row"
+      zIndex={90}
     >
       <box width={1} backgroundColor={accent} />
 
@@ -114,21 +138,44 @@ function Toast({ currentToast }: ToastProps) {
         backgroundColor={colors.surface}
         border
         borderStyle="rounded"
-        borderColor={colors.border}
-        paddingX={2}
-        paddingY={1}
+        borderColor={colors.borderSoft}
       >
-        <box flexDirection="row" gap={1} alignItems="center" width="100%">
-          <text fg={accent}>{icon}</text>
+        <box
+          flexDirection="row"
+          gap={1}
+          alignItems="flex-start"
+          paddingX={2}
+          paddingY={1}
+        >
+          <box
+            width={3}
+            height={1}
+            justifyContent="center"
+            alignItems="center"
+            backgroundColor={colors.dialogSurface}
+            border
+            borderStyle="rounded"
+            borderColor={colors.border}
+          >
+            <text fg={accent}>{icon}</text>
+          </box>
 
           <box flexDirection="column" flexGrow={1} gap={0}>
+            <text
+              fg={accent}
+              attributes={TextAttributes.BOLD}
+            >
+              {label}
+            </text>
+
             {hasTitle && (
               <text fg={colors.text} wrapMode="word" width="100%">
                 {currentToast.title}
               </text>
             )}
+
             <text
-              fg={hasTitle ? colors.textDim : colors.text}
+              fg={hasTitle ? colors.textMuted : colors.text}
               attributes={hasTitle ? TextAttributes.DIM : undefined}
               wrapMode="word"
               width="100%"
@@ -136,6 +183,13 @@ function Toast({ currentToast }: ToastProps) {
               {currentToast.message}
             </text>
           </box>
+        </box>
+
+        <box flexDirection="row" height={1} width="100%">
+          {progressWidth > 0 && (
+            <box width={progressWidth} backgroundColor={accent} />
+          )}
+          <box flexGrow={1} backgroundColor={colors.borderSoft} />
         </box>
       </box>
     </box>
