@@ -3,6 +3,7 @@ import { ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { getFilteredCommands } from "./filter-commands";
 import type { Command } from "./types";
+import { useKeyboardLayer } from "../../providers/keyboard-layer";
 
 type UseCommandMenuReturn = {
   showCommandMenu: boolean;
@@ -18,7 +19,7 @@ export function useCommandMenu(): UseCommandMenuReturn {
   const [textValue, setTextValue] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
-
+  const { push, pop, isTopLayer } = useKeyboardLayer();
   // Reference to the scrollable command list so we can
   // programmatically keep the selected item visible.
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -54,8 +55,14 @@ export function useCommandMenu(): UseCommandMenuReturn {
 
     if (prefix !== null && !prefix.includes(" ")) {
       setShowCommandMenu(true);
+      push("command", () => {
+        setShowCommandMenu(false);
+        pop("command");
+        return true
+      })
     } else {
       setShowCommandMenu(false);
+      pop("command")
     }
   };
 
@@ -65,6 +72,7 @@ export function useCommandMenu(): UseCommandMenuReturn {
     // Close the menu once a valid command has been selected.
     if (command) {
       setShowCommandMenu(false);
+      pop("command")
     }
 
     return command;
@@ -72,11 +80,12 @@ export function useCommandMenu(): UseCommandMenuReturn {
 
   useKeyboard((key) => {
     // Ignore keyboard navigation when the menu is hidden.
-    if (!showCommandMenu) return;
+    if (!showCommandMenu || !isTopLayer("command")) return;
 
     if (key.name === "escape") {
       key.preventDefault();
       setShowCommandMenu(false);
+      pop("command")
     } else if (key.name === "up") {
       key.preventDefault();
 

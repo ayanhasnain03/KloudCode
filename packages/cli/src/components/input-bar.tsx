@@ -6,7 +6,10 @@ import { StatusBar } from "./status-bar";
 import { CommandMenu } from "./command-menu";
 import { useCommandMenu } from "./command-menu/use-command-menu";
 import type { Command } from "./command-menu/types";
-import { palette } from "../theme";
+import { useToast } from "../providers/toast";
+import { useKeyboardLayer } from "../providers/keyboard-layer";
+import { useDialog } from "../providers/dialog";
+import { useTheme } from "../providers/theme";
 
 type Props = {
   onSubmit: (text: string) => void;
@@ -39,9 +42,16 @@ export function InputBar({
   const textareaRef = useRef<TextareaRenderable>(null);
   const onSubmitRef = useRef<() => void>(() => { });
   const renderer = useRenderer();
-
+  const toast = useToast();
+  const dialog = useDialog()
+  const { colors } = useTheme();
   const [focused, setFocused] = useState(!disabled);
+  const {
 
+    isTopLayer,
+    setResponder
+
+  } = useKeyboardLayer();
   // ----------------------------
   // COMMAND HANDLER (FIXED)
   // ----------------------------
@@ -54,15 +64,15 @@ export function InputBar({
 
       if (command.action) {
         command.action({
-          exit() {
-            renderer.destroy();
-          },
+          exit: () => renderer.destroy(),
+          toast,
+          dialog
         });
       } else {
         textarea.insertText(`${command.value} `);
       }
     },
-    [renderer]
+    [renderer, toast]
   );
 
   // ----------------------------
@@ -137,7 +147,20 @@ export function InputBar({
     handleCommand,
     handleSubmit,
   ]);
+  // register base layer responder
 
+  useEffect(() => {
+    setResponder("base", () => {
+      if (disabled) return false;
+      const textarea = textareaRef.current;
+      if (textarea && textarea.plainText.length > 0) {
+        textarea.setText("");
+        return true;
+      }
+      return true
+    });
+    return () => setResponder("base", null)
+  }, [disabled, setResponder])
   // ----------------------------
   // UI
   // ----------------------------
@@ -145,7 +168,7 @@ export function InputBar({
     <box width={width} flexDirection="row">
       <box
         width={1}
-        backgroundColor={focused ? palette.copperLight : palette.copperMuted}
+        backgroundColor={focused ? colors.accent : colors.accentMuted}
       />
 
       <box flexGrow={1} flexDirection="column">
@@ -165,23 +188,23 @@ export function InputBar({
           flexGrow={1}
           border
           borderStyle="rounded"
-          borderColor={focused ? palette.copperMuted : palette.border}
-          focusedBorderColor={palette.copper}
-          backgroundColor={palette.elevated}
+          borderColor={focused ? colors.accentMuted : colors.border}
+          focusedBorderColor={colors.primary}
+          backgroundColor={colors.surface}
           paddingX={2}
           paddingY={1}
           gap={1}
         >
           <textarea
             ref={textareaRef}
-            focused={!disabled}
+            focused={!disabled && (isTopLayer("base") || isTopLayer("command"))}
             placeholder="Ask anything..."
             keyBindings={TEXTAREA_KEY_BINDINGS}
-            placeholderColor={palette.silverGhost}
-            textColor={palette.platinum}
-            backgroundColor={palette.elevated}
-            focusedTextColor={palette.platinum}
-            focusedBackgroundColor={palette.elevated}
+            placeholderColor={colors.textGhost}
+            textColor={colors.text}
+            backgroundColor={colors.surface}
+            focusedTextColor={colors.text}
+            focusedBackgroundColor={colors.surface}
             onContentChange={() => {
               setFocused(true);
               handleTextareaContentChange();

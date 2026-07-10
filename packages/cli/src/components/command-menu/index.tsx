@@ -3,7 +3,7 @@ import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 
 import { getFilteredCommands } from "./filter-commands";
 import { COMMANDS } from "./commands";
-import { palette } from "../../theme";
+import { useTheme } from "../../providers/theme";
 
 
 const MAX_VISIBLE_COMMANDS = 8;
@@ -27,14 +27,15 @@ export function CommandMenu({
   onSelect,
   onExecute
 }: CommandMenuProps) {
+  const { colors } = useTheme();
   const filtered = getFilteredCommands(query);
   const visibleHeight = Math.min(filtered.length, MAX_VISIBLE_COMMANDS);
 
   if (filtered.length === 0) {
     return (
       <box paddingY={1}>
-        <text attributes={TextAttributes.DIM} fg={palette.silverGhost}>No matching commands found</text>
-        <text attributes={TextAttributes.DIM} fg={palette.silverGhost}>Type / to see available commands</text>
+        <text attributes={TextAttributes.DIM} fg={colors.textGhost}>No matching commands found</text>
+        <text attributes={TextAttributes.DIM} fg={colors.textGhost}>Type / to see available commands</text>
       </box>
     )
   }
@@ -49,7 +50,7 @@ export function CommandMenu({
               paddingX={1}
               height={1}
               overflow="hidden"
-              backgroundColor={isSelected ? palette.copperMuted : palette.elevated}
+              backgroundColor={isSelected ? colors.accentMuted : colors.surface}
               onMouseMove={() => onSelect(i)}
               onMouseDown={() => onSelect(i)}
             >
