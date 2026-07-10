@@ -2,16 +2,19 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useTerminalDimensions } from "@opentui/react";
 import { Header } from "./components/header";
 import { InputBar } from "./components/input-bar";
-import { palette } from "./theme";
-
-function App() {
+import { ToastProvider } from "./providers/toast";
+import { KeyboardLayerProvider } from "./providers/keyboard-layer";
+import { DialogProvider } from "./providers/dialog";
+import { ThemeProvider, useTheme } from "./providers/theme";
+function ThemedRoot() {
+  const { colors } = useTheme();
   const { width } = useTerminalDimensions();
   const inputWidth = Math.min(Math.max(width - 16, 52), 76);
 
   return (
     <box
       flexGrow={1}
-      backgroundColor={palette.void}
+      backgroundColor={colors.background}
       justifyContent="center"
       alignItems="center"
     >
@@ -20,6 +23,20 @@ function App() {
         <InputBar width={inputWidth} onSubmit={() => { }} />
       </box>
     </box>
+  )
+}
+function App() {
+
+  return (
+    <ThemeProvider>
+      <KeyboardLayerProvider>
+        <DialogProvider>
+          <ToastProvider>
+            <ThemedRoot />
+          </ToastProvider>
+        </DialogProvider>
+      </KeyboardLayerProvider>
+    </ThemeProvider>
   );
 }
 

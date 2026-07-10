@@ -1,17 +1,31 @@
+import { ThemeDialogContent } from "../dialogs";
 import type { Command, CommandContext } from "./types";
 
 export const COMMANDS: Command[] = [
   {
     name: "new",
     description: "Start a new conversation",
-    value: "/new"
+    value: "/new",
+    action: (ctx) => {
+
+      ctx.toast.show({
+        message: "Starting new conversation..."
+      })
+    }
   },
   {
     name: "agents",
     description: "Switch agents",
     value: "/agents",
     action: (ctx) => {
-
+      ctx.dialog.open({
+        title: "Select your agent",
+        children: (
+          <text>
+            Agent Dialog
+          </text>
+        )
+      })
     },
   },
   {
@@ -34,7 +48,10 @@ export const COMMANDS: Command[] = [
     description: "Change color theme",
     value: "/theme",
     action: (ctx) => {
-
+      ctx.dialog.open({
+        title: "Select Theme",
+        children: <ThemeDialogContent />
+      })
     },
   },
   {
