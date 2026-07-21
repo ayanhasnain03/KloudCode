@@ -7,15 +7,21 @@
     "dev": "bun run --watch src/index.tsx"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@kloud-code/server": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "@kloud-code/shared": "workspace:*",
     "@opentui/core": "^0.4.1",
     "@opentui/react": "^0.4.1",
     "@types/react": "^19.2.17",
-    "react": "^19.2.6"
+    "hono": "^4.12.30",
+    "opentui-spinner": "^0.0.7",
+    "react": "^19.2.6",
+    "react-router": "^8.2.0",
+    "zod": "^4.4.3"
   }
 }

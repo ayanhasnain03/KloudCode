@@ -1,43 +1,26 @@
 import { createCliRenderer } from "@opentui/core";
-import { createRoot, useTerminalDimensions } from "@opentui/react";
-import { Header } from "./components/header";
-import { InputBar } from "./components/input-bar";
-import { ToastProvider } from "./providers/toast";
-import { KeyboardLayerProvider } from "./providers/keyboard-layer";
-import { DialogProvider } from "./providers/dialog";
-import { ThemeProvider, useTheme } from "./providers/theme";
-function ThemedRoot() {
-  const { colors } = useTheme();
-  const { width } = useTerminalDimensions();
-  const inputWidth = Math.min(Math.max(width - 16, 52), 76);
-
-  return (
-    <box
-      flexGrow={1}
-      backgroundColor={colors.background}
-      justifyContent="center"
-      alignItems="center"
-    >
-      <box flexDirection="column" alignItems="center" gap={4} width="100%" maxWidth={84}>
-        <Header />
-        <InputBar width={inputWidth} onSubmit={() => { }} />
-      </box>
-    </box>
-  )
-}
+import { createRoot } from "@opentui/react";
+import { RootLayout } from "./layouts/root-layout";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { Session } from "./screens/session";
+import { Home } from "./screens/home";
+import { NewSession } from "./screens/new-session";
+const router = createMemoryRouter([
+  {
+    path: "/",
+    element: <RootLayout />,
+    children: [
+      { index: true, element: <Home /> },
+      {
+        path: "sessions/new", element: <NewSession />
+      }, {
+        path: "sessions/:id", element: <Session />
+      }
+    ]
+  }
+]);
 function App() {
-
-  return (
-    <ThemeProvider>
-      <KeyboardLayerProvider>
-        <DialogProvider>
-          <ToastProvider>
-            <ThemedRoot />
-          </ToastProvider>
-        </DialogProvider>
-      </KeyboardLayerProvider>
-    </ThemeProvider>
-  );
+  return <RouterProvider router={router} />;
 }
 
 const renderer = await createCliRenderer({

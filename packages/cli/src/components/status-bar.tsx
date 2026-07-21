@@ -1,12 +1,18 @@
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../providers/theme";
+import { InputLoader } from "./spinner";
 
 type Props = {
   model?: string;
   mode?: string;
+  loading?: boolean;
 };
 
-export function StatusBar({ model = "opus-4-6", mode = "Build" }: Props) {
+export function StatusBar({
+  model = "opus-4-6",
+  mode = "Build",
+  loading = false,
+}: Props) {
   const { colors } = useTheme();
 
   return (
@@ -19,9 +25,13 @@ export function StatusBar({ model = "opus-4-6", mode = "Build" }: Props) {
         <text fg={colors.textMuted}>{model}</text>
       </box>
 
-      <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
-        ↵
-      </text>
+      {loading ? (
+        <InputLoader />
+      ) : (
+        <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
+          ↵
+        </text>
+      )}
     </box>
   );
 }
