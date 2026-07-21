@@ -17,6 +17,7 @@ export function Home() {
     navigate("/sessions/new", {
       state: {
         message: text,
+        mode: "BUILD",
       }
     });
   }, [navigate]);

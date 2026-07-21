@@ -6,9 +6,10 @@ import { StatusIconBadge } from "./status-icon-badge";
 
 type Props = {
   message: string;
+  mode: string;
 };
 
-export function UserMessage({ message }: Props) {
+export function UserMessage({ message, mode }: Props) {
   const { width } = useTerminalDimensions();
   const { colors } = useTheme();
   const icon = toastIcons.success;
