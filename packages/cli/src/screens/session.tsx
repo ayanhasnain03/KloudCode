@@ -14,6 +14,10 @@ import { SessionShell } from "../components/session-shell";
 import { useChat, type Message } from "../hooks/use-chat";
 import pretryMs from "pretty-ms"
 import { DEFAULT_CHAT_MODEL_ID, type SupportedChatModelId } from "@kloud-code/shared";
+import { useKeyboard } from "@opentui/react";
+import { MessageStatus } from "@kloud-code/database";
+import { useKeyboardLayer } from "../providers/keyboard-layer";
+
 type SessionData = InferResponseType<typeof apiClient.sessions[":id"]["$get"], 200>
 function mapDbMessages(dbMessages: SessionData["messages"]): Message[] {
   return dbMessages.map((m): Message => {
@@ -43,7 +47,8 @@ function mapDbMessages(dbMessages: SessionData["messages"]): Message[] {
         type: "text",
         text: m.content
       }],
-      ...(m.duration != null ? { duration: pretryMs(m.duration * 1000) } : {})
+      ...(m.duration != null ? { duration: pretryMs(m.duration * 1000) } : {}),
+      interrupted: m.status === MessageStatus.INTERRUPTED
     }
   }
 
@@ -65,7 +70,7 @@ function ChatMessage({ msg }: {
   if (msg.role === "error") {
     return <ErrorMessage message={msg.content} />
   }
-  return <BotMessage parts={msg.parts} model={msg.model} mode={msg.mode} duration={msg.duration} streaming={false} />
+  return <BotMessage parts={msg.parts} model={msg.model} mode={msg.mode} duration={msg.duration} streaming={false} interrupted={msg.interrupted} />
 }
 
 
@@ -75,11 +80,26 @@ function SessionChats({
   session: SessionData
 }) {
   const [initialMessages] = useState(() => mapDbMessages(session.messages));
-  const { messages, streaming, submit, abort } = useChat(session.id, initialMessages);
+
+  const { isTopLayer } = useKeyboardLayer();
+
+
+
+  const { messages, streaming, submit, abort, interrupt } = useChat(session.id, initialMessages);
 
   useEffect(() => {
     return () => abort()
   }, [abort])
+
+
+  useKeyboard((key) => {
+    if (key.name === "escape" && isTopLayer("base") && streaming.status === "streaming") {
+      key.preventDefault();
+      interrupt();
+    }
+  })
+
+
 
   return (
     <SessionShell onSubmit={(text) => {
