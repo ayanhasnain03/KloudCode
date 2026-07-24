@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { sentry } from "@sentry/hono/bun";
 import * as Sentry from "@sentry/hono/bun";
 import { HTTPException } from 'hono/http-exception';
-
+import chat from "./routes/chat"
 import sessions from './routes/sessions';
 const app = new Hono()
 app.use(
@@ -46,9 +46,11 @@ app.onError((err, c) => {
   return c.json({
     error: 'Internal Server Error',
   }, 500)
-})
+});
+
 const routes =
-  app.route("/sessions", sessions);
+  app.route("/sessions", sessions)
+    .route("/chat", chat)
 
 export type AppType = typeof routes;
 
