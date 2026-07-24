@@ -4,7 +4,6 @@ import { useTheme } from "../../providers/theme";
 import { TextAttributes } from "@opentui/core";
 import type { ClientMessagePart } from "../../hooks/use-chat";
 import { Mode } from "@kloud-code/database/enums";
-import { Spinner } from "../spinner";
 
 type Props = {
   parts: ClientMessagePart[];
@@ -12,6 +11,7 @@ type Props = {
   mode: Mode;
   duration?: string;
   streaming?: boolean;
+  interrupted?: boolean;
 };
 
 // Blinking caret that only ticks while a response is actively streaming.
@@ -36,6 +36,7 @@ export function BotMessage({
   mode,
   duration,
   streaming = false,
+  interrupted = false,
 }: Props) {
   const text = parts
     .filter((p) => p.type === "text")
@@ -49,23 +50,27 @@ export function BotMessage({
 
   const modeColor =
     mode === Mode.BUILD
-      ? colors.success // Green
-      : colors.primary; // Purple/Cyan
+      ? colors.success
+      : colors.primary;
+
+  const accentColor = interrupted ? colors.error : modeColor;
+  const borderColor = interrupted ? colors.error : colors.borderSoft;
 
   const cursorVisible = useCursorBlink(streaming);
   const isThinking = streaming && text.length === 0;
+  const hasText = text.length > 0;
 
   return (
     <box flexDirection="row" width={boxWidth}>
       {/* Accent rail */}
-      <box width={1} backgroundColor={modeColor} />
+      <box width={1} backgroundColor={accentColor} />
 
       <box
         flexGrow={1}
         flexDirection="column"
         border
         borderStyle="rounded"
-        borderColor={colors.borderSoft}
+        borderColor={borderColor}
         backgroundColor={colors.surface}
       >
         {/* Header */}
@@ -79,7 +84,9 @@ export function BotMessage({
         >
           {/* Left */}
           <box gap={1} flexDirection="row" alignItems="center">
-            <text fg={colors.primary}>✦</text>
+            <text fg={interrupted ? colors.error : colors.primary}>
+              {interrupted ? "◼" : "✦"}
+            </text>
             <text fg={colors.text} attributes={TextAttributes.BOLD}>
               {model}
             </text>
@@ -87,27 +94,53 @@ export function BotMessage({
 
           {/* Right */}
           <box gap={1} flexDirection="row" alignItems="center">
-            <text fg={modeColor} attributes={TextAttributes.BOLD}>
-              {mode}
-            </text>
+            {!interrupted && (
+              <text fg={modeColor} attributes={TextAttributes.BOLD}>
+                {mode}
+              </text>
+            )}
 
-            {streaming ? (
-              <Spinner />
+            {interrupted ? (
+              <box flexDirection="row" gap={1} alignItems="center">
+                <text fg={colors.error} attributes={TextAttributes.BOLD}>
+                  Interrupted
+                </text>
+              </box>
             ) : (
+              !streaming &&
               duration && <text fg={colors.textMuted}>• {duration}</text>
             )}
           </box>
         </box>
 
         {/* Message */}
-        <box paddingX={2} paddingY={1} flexDirection="column">
+        <box paddingX={2} paddingY={1} flexDirection="column" gap={1}>
           {isThinking ? (
             <text fg={colors.textMuted}>Thinking…</text>
-          ) : (
-            <text fg={colors.text} wrapMode="word" width="100%">
+          ) : hasText ? (
+            <text
+              fg={interrupted ? colors.textMuted : colors.text}
+              wrapMode="word"
+              width="100%"
+            >
               {text}
               {streaming && cursorVisible ? "▋" : ""}
             </text>
+          ) : interrupted ? (
+            <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
+              No response generated
+            </text>
+          ) : null}
+
+          {interrupted && hasText && (
+            <box flexDirection="row" gap={1} alignItems="center">
+              <text fg={colors.error} attributes={TextAttributes.DIM}>
+                ─
+              </text>
+              <text fg={colors.textMuted} attributes={TextAttributes.DIM}>
+                stopped before completion
+              </text>
+            </box>
           )}
         </box>
       </box>

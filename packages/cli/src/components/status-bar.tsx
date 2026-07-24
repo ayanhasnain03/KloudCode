@@ -16,21 +16,47 @@ export function StatusBar({
   const { colors } = useTheme();
 
   return (
-    <box flexDirection="row" justifyContent="space-between" alignItems="center" width="100%">
+    <box
+      flexDirection="row"
+      justifyContent="space-between"
+      alignItems="center"
+      width="100%"
+    >
+      {/* Left — active mode / model */}
       <box flexDirection="row" gap={1} alignItems="center">
-        <text fg={colors.primary}>{mode}</text>
+        <text fg={colors.primary} attributes={TextAttributes.BOLD}>
+        </text>
         <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
           /
         </text>
         <text fg={colors.textMuted}>{model}</text>
       </box>
 
+      {/* Right — live status or key hints */}
       {loading ? (
-        <InputLoader />
+        <box flexDirection="row" gap={1} alignItems="center">
+          <InputLoader />
+          <text fg={colors.text} attributes={TextAttributes.BLINK}>
+            ·
+          </text>
+          <text fg={colors.error} attributes={TextAttributes.BOLD}>
+            esc
+          </text>
+          <text fg={colors.textMuted} attributes={TextAttributes.DIM}>
+            to interrupt
+          </text>
+        </box>
       ) : (
-        <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
-          ↵
-        </text>
+        <box flexDirection="row" gap={1} alignItems="center">
+          <text fg={colors.text} attributes={TextAttributes.BOLD}>↵</text>
+          <text fg={colors.text} attributes={TextAttributes.BOLD}>
+            send
+          </text>
+          <text fg={colors.text} attributes={TextAttributes.BOLD}>⇧↵</text>
+          <text fg={colors.text} attributes={TextAttributes.BOLD}>
+            newline
+          </text>
+        </box>
       )}
     </box>
   );
