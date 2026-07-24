@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "postinstall": "bun build --cwd ../database db:generate"
+    "start": "bun src/index.ts",
+    "postinstall": "bun run --cwd ../database db:generate"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.16",
