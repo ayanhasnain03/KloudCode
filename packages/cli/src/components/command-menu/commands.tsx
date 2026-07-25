@@ -1,5 +1,8 @@
-import { ThemeDialogContent } from "../dialogs";
+import { SessionDialog, ThemeDialogContent } from "../dialogs";
 import type { Command, CommandContext } from "./types";
+import { AgentsDialogContent } from "../dialogs/agents-dialog";
+import { ModelsDialogContent } from "../dialogs/models-dialog";
+import { SUPPORTED_CHAT_MODELS } from "@kloud-code/shared";
 
 export const COMMANDS: Command[] = [
   {
@@ -7,12 +10,7 @@ export const COMMANDS: Command[] = [
     description: "Start a new conversation",
     value: "/new",
     action: (ctx) => {
-
-      ctx.toast.show({
-        title: "New conversation",
-        message: "Ready when you are.",
-        variant: "success",
-      })
+      ctx.navigate("/")
     }
   },
   {
@@ -21,12 +19,10 @@ export const COMMANDS: Command[] = [
     value: "/agents",
     action: (ctx) => {
       ctx.dialog.open({
-        title: "Select Agent",
+        title: "Select Mode",
         description: "Choose the agent best suited for your task",
         children: (
-          <text>
-            Agent selection coming soon.
-          </text>
+          <AgentsDialogContent currentMode={ctx.mode} onSelect={ctx.setMode} />
         ),
       })
     },
@@ -36,7 +32,12 @@ export const COMMANDS: Command[] = [
     description: "Select AI model for generation",
     value: "/models",
     action: (ctx) => {
-
+      ctx.dialog.open({
+        title: "Select Model",
+        description: "Choose the model to use for generation",
+        children: <ModelsDialogContent models={SUPPORTED_CHAT_MODELS.map((model) => model.id)} onSelect={ctx.setModel} />,
+        width: 44,
+      })
     },
   },
   {
@@ -44,7 +45,13 @@ export const COMMANDS: Command[] = [
     description: "Browse past sessions",
     value: "/sessions",
     action: (ctx) => {
-
+      ctx.dialog.open({
+        title: "Sessions",
+        description: "Continue a past conversation",
+        children: <SessionDialog />,
+        hints: "↑↓ navigate · enter open · / search",
+        width: 72,
+      })
     },
   }, {
     name: "theme",
@@ -52,10 +59,10 @@ export const COMMANDS: Command[] = [
     value: "/theme",
     action: (ctx) => {
       ctx.dialog.open({
-        title: "Color Theme",
-        description: "Preview instantly, confirm with Enter",
+        title: "Theme",
+        description: "Colors follow gently as you browse",
         children: <ThemeDialogContent />,
-        hints: "↑↓ navigate · enter select",
+        width: 44,
       })
     },
   },

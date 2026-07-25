@@ -5,4 +5,6 @@ export type DialogConfig = {
   description?: string;
   children: ReactNode;
   hints?: string;
+  /** Preferred dialog width in columns. Clamped to terminal size. */
+  width?: number;
 }

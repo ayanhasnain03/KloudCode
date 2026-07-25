@@ -1,19 +1,41 @@
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../providers/theme";
 import { InputLoader } from "./spinner";
+import { usePromptConfig } from "../providers/prompt-config";
+import { Mode } from "@kloud-code/database/enums";
 
-type Props = {
-  model?: string;
-  mode?: string;
+interface Props {
   loading?: boolean;
-};
+}
 
-export function StatusBar({
-  model = "opus-4-6",
-  mode = "Build",
-  loading = false,
-}: Props) {
+function Hint({
+  keys,
+  label,
+  keyColor,
+  labelColor,
+}: {
+  keys: string;
+  label: string;
+  keyColor: string;
+  labelColor: string;
+}) {
+  return (
+    <box flexDirection="row" gap={1} alignItems="center">
+      <text fg={keyColor} attributes={TextAttributes.BOLD}>
+        {keys}
+      </text>
+      <text fg={labelColor}>{label}</text>
+    </box>
+  );
+}
+
+export function StatusBar({ loading = false }: Props) {
+  const { mode, model } = usePromptConfig();
   const { colors } = useTheme();
+
+  const isBuild = mode === Mode.BUILD;
+  const modeColor = isBuild ? colors.primary : colors.planMode;
+  const modeLabel = isBuild ? "build" : "plan";
 
   return (
     <box
@@ -22,40 +44,46 @@ export function StatusBar({
       alignItems="center"
       width="100%"
     >
-      {/* Left — active mode / model */}
-      <box flexDirection="row" gap={1} alignItems="center">
-        <text fg={colors.primary} attributes={TextAttributes.BOLD}>
+      <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+        <text fg={modeColor} attributes={TextAttributes.BOLD}>
+          {modeLabel}
         </text>
-        <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
-          /
-        </text>
+        <text fg={colors.textGhost}>/</text>
         <text fg={colors.textMuted}>{model}</text>
       </box>
 
-      {/* Right — live status or key hints */}
       {loading ? (
-        <box flexDirection="row" gap={1} alignItems="center">
+        <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
           <InputLoader />
-          <text fg={colors.text} attributes={TextAttributes.BLINK}>
-            ·
-          </text>
-          <text fg={colors.error} attributes={TextAttributes.BOLD}>
-            esc
-          </text>
-          <text fg={colors.textMuted} attributes={TextAttributes.DIM}>
-            to interrupt
-          </text>
+          <text fg={colors.textMuted}>working</text>
+          <text fg={colors.textGhost}>·</text>
+          <Hint
+            keys="esc"
+            label="interrupt"
+            keyColor={colors.error}
+            labelColor={colors.textMuted}
+          />
         </box>
       ) : (
-        <box flexDirection="row" gap={1} alignItems="center">
-          <text fg={colors.text} attributes={TextAttributes.BOLD}>↵</text>
-          <text fg={colors.text} attributes={TextAttributes.BOLD}>
-            send
-          </text>
-          <text fg={colors.text} attributes={TextAttributes.BOLD}>⇧↵</text>
-          <text fg={colors.text} attributes={TextAttributes.BOLD}>
-            newline
-          </text>
+        <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
+          <Hint
+            keys="↵"
+            label="send"
+            keyColor={colors.textMuted}
+            labelColor={colors.textDim}
+          />
+          <Hint
+            keys="⇧↵"
+            label="newline"
+            keyColor={colors.textMuted}
+            labelColor={colors.textDim}
+          />
+          <Hint
+            keys="tab"
+            label="mode"
+            keyColor={colors.textMuted}
+            labelColor={colors.textDim}
+          />
         </box>
       )}
     </box>

@@ -84,8 +84,8 @@ function Dialog({ currentDialog, close }: DialogProps) {
     return null;
   }
 
-  const { title, description, children, hints } = currentDialog;
-  const dialogWidth = Math.min(56, dimensions.width - 8);
+  const { title, description, children, hints, width } = currentDialog;
+  const dialogWidth = Math.min(width ?? 56, dimensions.width - 8);
 
   return (
     <box

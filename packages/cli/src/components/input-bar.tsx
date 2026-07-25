@@ -1,6 +1,6 @@
 import type { KeyBinding, TextareaRenderable } from "@opentui/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRenderer } from "@opentui/react";
+import { useKeyboard, useRenderer } from "@opentui/react";
 
 import { StatusBar } from "./status-bar";
 import { CommandMenu } from "./command-menu";
@@ -10,7 +10,8 @@ import { useToast } from "../providers/toast";
 import { useKeyboardLayer } from "../providers/keyboard-layer";
 import { useDialog } from "../providers/dialog";
 import { useTheme } from "../providers/theme";
-
+import { useNavigate } from "react-router";
+import { usePromptConfig } from "../providers/prompt-config";
 type Props = {
   onSubmit: (text: string) => void;
   disabled?: boolean;
@@ -31,6 +32,8 @@ export function InputBar({
   loading = false,
   width = "100%",
 }: Props) {
+  const navigate = useNavigate();
+  const { mode, toggleMode, setMode, setModel } = usePromptConfig();
   const {
     resolveCommand,
     commandQuery,
@@ -68,13 +71,17 @@ export function InputBar({
         command.action({
           exit: () => renderer.destroy(),
           toast,
-          dialog
+          dialog,
+          navigate,
+          mode,
+          setMode,
+          setModel,
         });
       } else {
         textarea.insertText(`${command.value} `);
       }
     },
-    [renderer, toast, dialog]
+    [renderer, toast, dialog, navigate, mode, setMode, setModel]
   );
 
   // ----------------------------
@@ -149,6 +156,17 @@ export function InputBar({
     handleCommand,
     handleSubmit,
   ]);
+
+
+  useKeyboard((key) => {
+    if (disabled) return;
+    if (!isTopLayer("base")) return;
+    if (key.name === "tab") {
+      key.preventDefault();
+      toggleMode();
+    }
+  });
+
   // register base layer responder
 
   useEffect(() => {

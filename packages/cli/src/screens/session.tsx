@@ -13,10 +13,11 @@ import { getErrorMessage } from "../lib/http-errors";
 import { SessionShell } from "../components/session-shell";
 import { useChat, type Message } from "../hooks/use-chat";
 import pretryMs from "pretty-ms"
-import { DEFAULT_CHAT_MODEL_ID, type SupportedChatModelId } from "@kloud-code/shared";
+import { type SupportedChatModelId } from "@kloud-code/shared";
 import { useKeyboard } from "@opentui/react";
-import { MessageStatus } from "@kloud-code/database";
+import { MessageStatus, Mode } from "@kloud-code/database";
 import { useKeyboardLayer } from "../providers/keyboard-layer";
+import { usePromptConfig } from "../providers/prompt-config";
 
 type SessionData = InferResponseType<typeof apiClient.sessions[":id"]["$get"], 200>
 function mapDbMessages(dbMessages: SessionData["messages"]): Message[] {
@@ -75,9 +76,13 @@ function ChatMessage({ msg }: {
 
 
 function SessionChats({
-  session
+  session,
+  mode,
+  model
 }: {
   session: SessionData
+  mode: Mode
+  model: SupportedChatModelId
 }) {
   const [initialMessages] = useState(() => mapDbMessages(session.messages));
 
@@ -105,8 +110,8 @@ function SessionChats({
     <SessionShell onSubmit={(text) => {
       submit({
         userText: text,
-        mode: "BUILD",
-        model: DEFAULT_CHAT_MODEL_ID
+        mode: mode,
+        model: model
       })
     }} loading={streaming.status === "streaming"}>
       {
@@ -137,7 +142,7 @@ export function Session() {
   const location = useLocation();
   const toast = useToast();
   const navigate = useNavigate();
-
+  const { mode, model } = usePromptConfig();
   const prefetched = useMemo(() => {
     const parsed = sessionLocationSchema.safeParse(location.state);
     return parsed.success ? parsed.data.session : null;
@@ -177,12 +182,12 @@ export function Session() {
     return () => {
       ignore = true;
     }
-  }, [id, toast, prefetched, navigate]);
+  }, [id, toast, prefetched, navigate, mode, model]);
 
 
   if (!session) return <SessionShell onSubmit={() => { }} inputDisabled={true} />;
 
   return (
-    <SessionChats key={session.id} session={session} />
+    <SessionChats key={session.id} session={session} mode={mode} model={model} />
   )
 }

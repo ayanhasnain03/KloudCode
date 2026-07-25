@@ -4,13 +4,13 @@ import {
   useRef
 } from "react"
 import { z } from "zod";
-import { DEFAULT_CHAT_MODEL_ID } from "@kloud-code/shared";
 import { useNavigate, useLocation } from "react-router";
 import { UserMessage } from "../components/messages/user-message";
 import { SessionShell } from "../components/session-shell";
 import { useToast } from "../providers/toast";
 import { apiClient } from "../lib/api-client";
 import { getErrorMessage } from "../lib/http-errors";
+import { usePromptConfig } from "../providers/prompt-config";
 
 
 
@@ -22,6 +22,7 @@ const newSessionSchema = z.object({
 
 
 export function NewSession() {
+  const { mode, model } = usePromptConfig();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -57,8 +58,8 @@ export function NewSession() {
             initialMessage: {
               role: "USER",
               content: state.message,
-              mode: "BUILD",
-              model: DEFAULT_CHAT_MODEL_ID,
+              mode: mode,
+              model: model,
             }
           }
         })
@@ -82,7 +83,7 @@ export function NewSession() {
     return () => {
       ignore = true;
     }
-  }, [state, toast, navigate]);
+  }, [state, toast, navigate, mode, model]);
 
   if (!state) return null;
 

@@ -66,6 +66,14 @@ export const SUPPORTED_CHAT_MODELS = [
     pricing: {
       inputUsdPerMillionTokens: 0.15,
       outputUsdPerMillionTokens: 0.6,
+    }
+  },
+  {
+    id: "gpt-5-mini",
+    provider: "openai",
+    pricing: {
+      inputUsdPerMillionTokens: 0.25,
+      outputUsdPerMillionTokens: 2,
     },
   },
 ] as const satisfies readonly SupportedChatModelDefinition[];
