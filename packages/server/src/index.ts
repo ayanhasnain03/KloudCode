@@ -57,5 +57,6 @@ export type AppType = typeof routes;
 export default {
   port: Number(process.env.PORT) || 3000,
   fetch: app.fetch,
-  idleTimeout: 255
+  // Max Bun allows. SSE heartbeats every 5s keep long bash/tool turns alive.
+  idleTimeout: 255,
 }

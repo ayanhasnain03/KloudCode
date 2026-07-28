@@ -5,6 +5,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
 } from "react";
 
 import type { ReactNode } from "react";
@@ -70,9 +71,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
     [clearCurrentTimeout]
   );
 
-  const value: ToastContextValue = {
-    show,
-  };
+  const value = useMemo<ToastContextValue>(() => ({ show }), [show]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -110,78 +109,82 @@ function Toast({ currentToast }: ToastProps) {
     return () => clearInterval(interval);
   }, [currentToast]);
 
-  if (!currentToast) {
-    return null;
-  }
-
-  const variant: ToastVariant = currentToast.variant ?? "info";
+  const variant: ToastVariant = currentToast?.variant ?? "info";
   const accent = colors[variant];
   const icon = toastIcons[variant];
   const label = toastLabels[variant];
   const toastWidth = Math.max(32, Math.min(52, width - 8));
-  const hasTitle = Boolean(currentToast.title);
+  const hasTitle = Boolean(currentToast?.title);
   const progressWidth = Math.max(0, Math.round((toastWidth - 2) * progress));
 
+  // Same reasoning as the dialog overlay: keep this absolutely positioned
+  // node mounted and collapse it instead of unmounting it.
   return (
     <box
       position="absolute"
       top={2}
       right={2}
-      width={toastWidth}
+      width={currentToast ? toastWidth : 0}
+      height={currentToast ? undefined : 0}
       flexDirection="row"
+      overflow="hidden"
       zIndex={90}
     >
-      <box width={1} backgroundColor={accent} />
+      {currentToast && (
+        <>
+          <box width={1} backgroundColor={accent} />
 
-      <box
-        flexGrow={1}
-        flexDirection="column"
-        backgroundColor={colors.surface}
-        border
-        borderStyle="rounded"
-        borderColor={colors.borderSoft}
-      >
-        <box
-          flexDirection="row"
-          gap={1}
-          alignItems="flex-start"
-          paddingX={2}
-          paddingY={1}
-        >
-          <StatusIconBadge icon={icon} color={accent} />
-
-          <box flexDirection="column" flexGrow={1} gap={0}>
-            <text
-              fg={accent}
-              attributes={TextAttributes.BOLD}
+          <box
+            flexGrow={1}
+            flexDirection="column"
+            backgroundColor={colors.surface}
+            border
+            borderStyle="rounded"
+            borderColor={colors.borderSoft}
+          >
+            <box
+              flexDirection="row"
+              gap={1}
+              alignItems="flex-start"
+              paddingX={2}
+              paddingY={1}
             >
-              {label}
-            </text>
+              <StatusIconBadge icon={icon} color={accent} />
 
-            {hasTitle && (
-              <text fg={colors.text} wrapMode="word" width="100%">
-                {currentToast.title}
-              </text>
-            )}
+              <box flexDirection="column" flexGrow={1} gap={0}>
+                <text
+                  fg={accent}
+                  attributes={TextAttributes.BOLD}
+                >
+                  {label}
+                </text>
 
-            <text
-              fg={hasTitle ? colors.textMuted : colors.text}
-              attributes={hasTitle ? TextAttributes.DIM : undefined}
-              wrapMode="word"
-              width="100%"
-            >
-              {currentToast.message}
-            </text>
+                <text
+                  fg={colors.text}
+                  wrapMode="word"
+                  width="100%"
+                >
+                  {currentToast.title ?? ""}
+                </text>
+
+                <text
+                  fg={hasTitle ? colors.textMuted : colors.text}
+                  attributes={hasTitle ? TextAttributes.DIM : undefined}
+                  wrapMode="word"
+                  width="100%"
+                >
+                  {currentToast.message}
+                </text>
+              </box>
+            </box>
+
+            <box flexDirection="row" height={1} width="100%">
+              <box width={progressWidth} backgroundColor={accent} />
+              <box flexGrow={1} backgroundColor={colors.borderSoft} />
+            </box>
           </box>
-        </box>
-
-        <box flexDirection="row" height={1} width="100%">
-          {progressWidth > 0 && (
-            <box width={progressWidth} backgroundColor={accent} />
-          )}
-          <box flexGrow={1} backgroundColor={colors.borderSoft} />
-        </box>
-      </box>
+        </>
+      )}
     </box>
   );
 }

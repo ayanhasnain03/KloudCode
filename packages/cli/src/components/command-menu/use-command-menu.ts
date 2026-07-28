@@ -19,10 +19,28 @@ export function useCommandMenu(): UseCommandMenuReturn {
   const [textValue, setTextValue] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const showCommandMenuRef = useRef(false);
   const { push, pop, isTopLayer } = useKeyboardLayer();
   // Reference to the scrollable command list so we can
   // programmatically keep the selected item visible.
   const scrollRef = useRef<ScrollBoxRenderable>(null);
+
+  const closeCommandMenu = () => {
+    if (!showCommandMenuRef.current) return;
+    showCommandMenuRef.current = false;
+    setShowCommandMenu(false);
+    pop("command");
+  };
+
+  const openCommandMenu = () => {
+    if (showCommandMenuRef.current) return;
+    showCommandMenuRef.current = true;
+    setShowCommandMenu(true);
+    push("command", () => {
+      closeCommandMenu();
+      return true;
+    });
+  };
 
   // Extract the search query from "/command".
   // Example: "/help" -> "help"
@@ -52,17 +70,12 @@ export function useCommandMenu(): UseCommandMenuReturn {
     // Show the command menu only while typing the command name.
     // Hide it once the user starts entering command arguments.
     const prefix = text.startsWith("/") ? text.slice(1) : null;
+    const shouldShow = prefix !== null && !prefix.includes(" ");
 
-    if (prefix !== null && !prefix.includes(" ")) {
-      setShowCommandMenu(true);
-      push("command", () => {
-        setShowCommandMenu(false);
-        pop("command");
-        return true
-      })
+    if (shouldShow) {
+      openCommandMenu();
     } else {
-      setShowCommandMenu(false);
-      pop("command")
+      closeCommandMenu();
     }
   };
 
@@ -71,8 +84,7 @@ export function useCommandMenu(): UseCommandMenuReturn {
 
     // Close the menu once a valid command has been selected.
     if (command) {
-      setShowCommandMenu(false);
-      pop("command")
+      closeCommandMenu();
     }
 
     return command;
@@ -84,8 +96,7 @@ export function useCommandMenu(): UseCommandMenuReturn {
 
     if (key.name === "escape") {
       key.preventDefault();
-      setShowCommandMenu(false);
-      pop("command")
+      closeCommandMenu();
     } else if (key.name === "up") {
       key.preventDefault();
 
@@ -112,9 +123,8 @@ export function useCommandMenu(): UseCommandMenuReturn {
         const newIdx = Math.min(filteredCommands.length - 1, i + 1);
 
         const scrollbar = scrollRef.current;
-        if (scrollbar) {
-          const viewportHeight = scrollbar.viewport.height;
-
+        const viewportHeight = scrollbar?.viewport?.height;
+        if (scrollbar && viewportHeight != null) {
           // Index of the last visible item.
           const visibleEnd = scrollbar.scrollTop + viewportHeight - 1;
 

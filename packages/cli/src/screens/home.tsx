@@ -7,9 +7,11 @@ import { useNavigate } from "react-router"
 import { Header } from "../components/header"
 import { useTerminalDimensions } from "@opentui/react"
 import { InputBar } from "../components/input-bar"
+import { usePromptConfigActions } from "../providers/prompt-config"
 
 export function Home() {
   const navigate = useNavigate();
+  const { getMode } = usePromptConfigActions();
   const { width } = useTerminalDimensions();
   const inputWidth = Math.min(Math.max(width - 16, 52), 76);
   // use for navigation to the new session page with the message
@@ -17,10 +19,10 @@ export function Home() {
     navigate("/sessions/new", {
       state: {
         message: text,
-        mode: "BUILD",
+        mode: getMode(),
       }
     });
-  }, [navigate]);
+  }, [navigate, getMode]);
 
   return (
     <box

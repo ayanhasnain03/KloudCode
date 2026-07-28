@@ -142,13 +142,7 @@ export function DialogSearchList<T>({
   });
 
   return (
-    <box
-      flexDirection="column"
-      border
-      borderStyle="rounded"
-      borderColor={colors.borderSoft}
-      backgroundColor={colors.surface}
-    >
+    <box flexDirection="column" gap={0}>
       {header && (
         <>
           <box paddingX={1} paddingY={0}>
@@ -163,6 +157,7 @@ export function DialogSearchList<T>({
         alignItems="center"
         gap={1}
         paddingX={1}
+        height={1}
       >
         <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
           /
@@ -217,7 +212,7 @@ export function DialogSearchList<T>({
                   {renderItem(item, isSelected)}
                 </box>
               </box>
-            )
+            );
           })}
         </scrollbox>
       )}
@@ -225,11 +220,11 @@ export function DialogSearchList<T>({
       {footer && (
         <>
           <box height={1} width="100%" backgroundColor={colors.borderSoft} />
-          <box paddingX={1} paddingY={0}>
+          <box paddingX={1} paddingY={0} height={1}>
             {footer}
           </box>
         </>
       )}
     </box>
   );
-};
+}

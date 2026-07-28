@@ -119,7 +119,7 @@ export const ThemeDialogContent = () => {
             {isPreviewing ? currentTheme.name : savedThemeName}
           </text>
           <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
-            {isPreviewing ? "enter to keep · esc undoes" : "↑↓ to wander"}
+            {isPreviewing ? "enter select · esc close" : "↑↓ navigate"}
           </text>
         </box>
       }

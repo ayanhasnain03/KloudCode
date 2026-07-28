@@ -10,7 +10,9 @@ import { SessionShell } from "../components/session-shell";
 import { useToast } from "../providers/toast";
 import { apiClient } from "../lib/api-client";
 import { getErrorMessage } from "../lib/http-errors";
-import { usePromptConfig } from "../providers/prompt-config";
+import { writeLastSessionId } from "../lib/last-session";
+import { usePromptConfigActions } from "../providers/prompt-config";
+import { LoadingPanel } from "../components/spinner";
 
 
 
@@ -22,7 +24,7 @@ const newSessionSchema = z.object({
 
 
 export function NewSession() {
-  const { mode, model } = usePromptConfig();
+  const { getMode, getModel } = usePromptConfigActions();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -58,8 +60,9 @@ export function NewSession() {
             initialMessage: {
               role: "USER",
               content: state.message,
-              mode: mode,
-              model: model,
+              // Prefer live ref (Tab may have toggled without React state sync).
+              mode: getMode(),
+              model: getModel(),
             }
           }
         })
@@ -69,6 +72,7 @@ export function NewSession() {
           throw new Error(await getErrorMessage(res));
         }
         const session = await res.json();
+        writeLastSessionId(session.id);
         navigate(`/sessions/${session.id}`, { replace: true, state: { session } });
       } catch (error) {
         if (ignore) return;
@@ -83,13 +87,14 @@ export function NewSession() {
     return () => {
       ignore = true;
     }
-  }, [state, toast, navigate, mode, model]);
+  }, [state, toast, navigate, getMode, getModel]);
 
   if (!state) return null;
 
   return (
     <SessionShell onSubmit={() => { }} inputDisabled={false} loading={true}>
       <UserMessage message={state.message} mode={state.mode} />
+      <LoadingPanel message="Starting session…" variant="orbit" />
     </SessionShell>
   )
 

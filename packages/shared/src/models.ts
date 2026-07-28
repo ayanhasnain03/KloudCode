@@ -76,6 +76,14 @@ export const SUPPORTED_CHAT_MODELS = [
       outputUsdPerMillionTokens: 2,
     },
   },
+  {
+    id: "o4-mini",
+    provider: "openai",
+    pricing: {
+      inputUsdPerMillionTokens: 1.1,
+      outputUsdPerMillionTokens: 4.4,
+    },
+  },
 ] as const satisfies readonly SupportedChatModelDefinition[];
 
 export type SupportedChatModel = (typeof SUPPORTED_CHAT_MODELS)[number];

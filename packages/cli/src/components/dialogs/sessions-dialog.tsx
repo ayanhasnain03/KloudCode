@@ -8,7 +8,7 @@ import { useTheme } from "../../providers/theme";
 import { apiClient } from "../../lib/api-client";
 import { DialogSearchList } from "../dialog-search-list";
 import type { InferResponseType } from "hono/client";
-import { Spinner } from "../spinner";
+import { LoadingPanel } from "../spinner";
 
 type SessionData = InferResponseType<(typeof apiClient.sessions)["$get"], 200>[number];
 
@@ -82,22 +82,13 @@ export const SessionDialog = () => {
     close();
     if (session.id === currentSessionId) return;
     navigate(`/sessions/${session.id}`);
+    // writeLastSessionId is handled by Session screen on mount
   }, [close, navigate, currentSessionId]);
 
   if (loading) {
     return (
-      <box
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        gap={1}
-        paddingY={2}
-        height={6}
-      >
-        <Spinner />
-        <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
-          Loading sessions…
-        </text>
+      <box height={6} width="100%" justifyContent="center">
+        <LoadingPanel message="Loading sessions…" />
       </box>
     );
   }

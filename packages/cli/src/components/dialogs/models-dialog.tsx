@@ -75,8 +75,12 @@ export const ModelsDialogContent = ({ models, onSelect }: ModelsDialogContentPro
           width="100%"
           gap={1}
         >
-          <text attributes={TextAttributes.DIM} fg={colors.textGhost}>↑↓ to wander</text>
-          <text attributes={TextAttributes.DIM} fg={colors.textGhost}>enter to keep · esc undoes</text>
+          <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+            ↑↓ navigate
+          </text>
+          <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+            enter select · esc close
+          </text>
         </box>
       }
     />

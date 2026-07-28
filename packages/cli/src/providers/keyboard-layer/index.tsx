@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useCallback,
+  useMemo,
   useRef
 } from "react";
 
@@ -14,17 +15,20 @@ type KeyboardLayerContextValue = {
   push: (id: string, responder?: Responder) => void;
   pop: (id: string) => void;
   isTopLayer: (id: string) => boolean;
-  setResponder: (id: string, responder: Responder | null) => void
+  setResponder: (id: string, responder: Responder | null) => void;
+  topLayer: string;
 }
 
 const KeyboardLayerContext = createContext<KeyboardLayerContextValue | null>(null);
+
+const BASE_LAYER = "base";
 
 
 export function KeyboardLayerProvider({ children }: {
   children: React.ReactNode
 }) {
 
-  const [stack, setStack] = useState<string[]>(["base"])
+  const [stack, setStack] = useState<string[]>([BASE_LAYER])
   const stackRef = useRef(stack)
   stackRef.current = stack;
 
@@ -49,9 +53,12 @@ export function KeyboardLayerProvider({ children }: {
     setStack((prev) => prev.filter((layer) => layer !== id))
   }, [])
 
-  const isTopLayer = useCallback((id: string) => {
-    return stack.length === 0 || stack[stack.length - 1] === id;
-  }, [stack])
+  const topLayer = stack[stack.length - 1] ?? BASE_LAYER;
+
+  const isTopLayer = useCallback(
+    (id: string) => topLayer === id,
+    [topLayer],
+  );
 
   const setResponder = useCallback((id: string, responder: Responder | null) => {
     if (responder) {
@@ -75,15 +82,21 @@ export function KeyboardLayerProvider({ children }: {
         return;
       }
     }
-    renderer.destroy();
+    // Destroying the renderer from inside the key handler tears down native
+    // nodes mid-frame; let the current frame finish first.
+    setTimeout(() => renderer.destroy(), 0);
   })
+
+  // Only changes when the active layer changes, so consumers (notably the
+  // input bar wrapping the focused textarea) do not re-render on unrelated
+  // provider updates.
+  const value = useMemo<KeyboardLayerContextValue>(
+    () => ({ push, pop, isTopLayer, setResponder, topLayer }),
+    [push, pop, isTopLayer, setResponder, topLayer],
+  );
+
   return (
-    <KeyboardLayerContext.Provider value={{
-      push,
-      pop,
-      isTopLayer,
-      setResponder
-    }}>
+    <KeyboardLayerContext.Provider value={value}>
       {children}
     </KeyboardLayerContext.Provider >
   )

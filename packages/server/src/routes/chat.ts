@@ -1,19 +1,18 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { stream, streamSSE } from "hono/streaming";
+import { streamSSE } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
 
-import { streamText as aiStreamText } from "ai"
-
+import { streamText as aiStreamText, stepCountIs } from "ai"
+import { createTools } from "../tools";
 import { db } from "@kloud-code/database";
-
+import { buildSystemPrompt } from "../system-prompt";
 
 import { Mode, MessageStatus } from "@kloud-code/database";
 
-import { type ChatStreamEvent } from "@kloud-code/shared";
-
+import { messagePartsSchema, type ChatStreamEvent, type MessagePart, toolCallArgsSchema } from "@kloud-code/shared";
+import type { Prisma } from "@kloud-code/database"
 import { isSupportedChatModel, resolveChatModel } from "../lib/models";
-
 
 const submitSchema = z.object({
   content: z.string(),
@@ -66,6 +65,7 @@ function getResumableUserMessage(
 type StreamParams = {
   sessionId: string;
   model: string;
+  cwd: string | null;
   history: { role: "user" | "assistant"; content: string }[];
   mode: Mode;
   abortController: AbortController
@@ -76,15 +76,29 @@ async function streamAIResponse(
   stream: Parameters<Parameters<typeof streamSSE>[1]>[0],
   params: StreamParams
 ) {
-  const { sessionId, model, history, mode, abortController } = params;
+  const { sessionId, model, cwd, history, mode, abortController } = params;
 
 
   const startTime = Date.now();
+  const tools = cwd ? createTools(cwd, mode) : undefined;
+  // store the parts of the message in an array
+  const parts: MessagePart[] = [];
+
+  const getFullText = () =>
+    parts
+      .filter((p): p is Extract<MessagePart, { type: "text" }> => p.type === "text")
+      .map((p) => p.text)
+      .join("");
+
   const resolvedModel = resolveChatModel(model);
-  let fullText = "";
+
   const persistInterruptedMessage = async () => {
-    if (fullText.length === 0) return;
+    const fullText = getFullText();
+    if (fullText.length === 0 && parts.length === 0) return;
+
     const elapsedMs = Date.now() - startTime;
+    const validatedParts: Prisma.InputJsonValue | undefined = parts.length > 0 ? messagePartsSchema.parse(parts) : undefined;
+
     await db.message.create({
       data: {
         sessionId,
@@ -93,44 +107,165 @@ async function streamAIResponse(
         model,
         content: fullText,
         mode,
-        duration: Math.round(elapsedMs / 1000)
+        duration: Math.round(elapsedMs / 1000),
+        parts: validatedParts
       }
     })
   }
   try {
     const result = aiStreamText({
       model: resolvedModel.model,
+      system: buildSystemPrompt({ mode, cwd }),
+      tools,
+      stopWhen: tools ? stepCountIs(50) : undefined,
       messages: history,
-      abortSignal: abortController.signal
+      abortSignal: abortController.signal,
+      providerOptions: resolvedModel.providerOptions as Parameters<
+        typeof aiStreamText
+      >[0]["providerOptions"],
     });
 
-    for await (const part of result.fullStream) {
-      if (stream.aborted) break;
-      if (part.type === "text-delta") {
-        fullText += part.text;
+    const appendReasoningDelta = async (delta: string) => {
+      if (delta.length === 0) return;
 
-        const event: ChatStreamEvent = {
-          type: "text-delta",
-          text: part.text
-        };
-
-        await stream.writeSSE({
-          event: "text-delta",
-          data: JSON.stringify(event)
+      const last = parts[parts.length - 1];
+      if (last && last.type === "reasoning") {
+        last.text += delta;
+      } else {
+        parts.push({
+          type: "reasoning",
+          text: delta,
         });
+      }
 
+      const event: ChatStreamEvent = {
+        type: "reasoning-delta",
+        text: delta,
+      };
+      await stream.writeSSE({
+        event: "reasoning-delta",
+        data: JSON.stringify(event),
+      });
+    };
+
+    // Keep the SSE connection alive during long bash/tool work — Bun closes
+    // idle connections (idleTimeout), which aborts the turn mid-install.
+    const heartbeat = setInterval(() => {
+      if (stream.aborted || abortController.signal.aborted) return;
+      const ping: ChatStreamEvent = { type: "ping" };
+      void stream.writeSSE({
+        event: "ping",
+        data: JSON.stringify(ping),
+      });
+    }, 5_000);
+
+    try {
+      for await (const part of result.fullStream) {
+        if (stream.aborted) break;
+        if (part.type === "text-delta") {
+          const last = parts[parts.length - 1];
+          if (last && last.type === "text") {
+            last.text += part.text;
+          } else {
+            parts.push({
+              type: "text",
+              text: part.text
+            });
+          }
+
+          const event: ChatStreamEvent = {
+            type: "text-delta",
+            text: part.text
+          };
+
+          await stream.writeSSE({
+            event: "text-delta",
+            data: JSON.stringify(event)
+          });
+        }
+
+
+        if (part.type === "reasoning-delta") {
+          await appendReasoningDelta(part.text);
+        }
+        if (part.type === "tool-call") {
+          const args = toolCallArgsSchema.parse(part.input);
+
+          parts.push({
+            type: "tool-call",
+            id: part.toolCallId,
+            name: part.toolName,
+            args
+          });
+
+          const event: ChatStreamEvent = {
+            type: "tool-call",
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            args
+          };
+          await stream.writeSSE({
+            event: "tool-call",
+            data: JSON.stringify(event)
+          });
+        }
+
+
+        if (part.type === "tool-result") {
+          const resultStr = typeof part.output === "string" ? part.output : JSON.stringify(part.output);
+
+          // find current tool call part because we need to update the result of the tool call
+
+          const tcPart = parts.find((p): p is Extract<MessagePart, { type: "tool-call" }> => p.type === "tool-call" && p.id === part.toolCallId);
+
+          if (tcPart) {
+            tcPart.result = resultStr;
+          };
+
+          const event: ChatStreamEvent = {
+            type: "tool-result",
+            toolCallId: part.toolCallId,
+            result: resultStr
+          }
+
+          await stream.writeSSE({
+            event: "tool-result",
+            data: JSON.stringify(event)
+          });
+        }
+
+
+        if (part.type === "error") {
+          throw part.error
+        }
       }
-      if (part.type === "error") {
-        throw part.error
-      }
+    } finally {
+      clearInterval(heartbeat);
     }
 
     if (stream.aborted || abortController.signal.aborted) {
       await persistInterruptedMessage();
       return;
     }
-    const elapsedMs = Date.now() - startTime;
 
+    // Some Responses API turns bill reasoning tokens but stream empty deltas.
+    // Fall back to the aggregated reasoning text so DB/UI still get a Thought block.
+    const hasReasoningPart = parts.some((p) => p.type === "reasoning" && p.text.trim().length > 0);
+    if (!hasReasoningPart) {
+      try {
+        const reasoningText = await result.reasoningText;
+        if (reasoningText && reasoningText.trim().length > 0) {
+          await appendReasoningDelta(reasoningText);
+        }
+      } catch {
+        // Stream already finished; ignore if aggregated reasoning is unavailable.
+      }
+    }
+
+    const elapsedMs = Date.now() - startTime;
+    const fullText = getFullText();
+    const validatedParts: Prisma.InputJsonValue | undefined =
+      parts.length > 0 ? messagePartsSchema.parse(parts) : undefined;
     const assistantMessage = await db.message.create({
       data: {
         sessionId,
@@ -139,7 +274,8 @@ async function streamAIResponse(
         model,
         content: fullText,
         mode,
-        duration: Math.round(elapsedMs / 1000)
+        duration: Math.round(elapsedMs / 1000),
+        parts: validatedParts
       }
     });
 
@@ -250,6 +386,7 @@ const app = new Hono()
           await streamAIResponse(stream, {
             sessionId,
             model: resumableMessage.model,
+            cwd: session.cwd,
             history,
             mode: resumableMessage.mode,
             abortController,
@@ -338,6 +475,7 @@ const app = new Hono()
         await streamAIResponse(stream, {
           sessionId,
           model: data.model,
+          cwd: session.cwd,
           history,
           mode: data.mode,
           abortController

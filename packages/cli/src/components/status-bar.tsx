@@ -1,24 +1,31 @@
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../providers/theme";
 import { InputLoader } from "./spinner";
-import { usePromptConfig } from "../providers/prompt-config";
+import {
+  usePromptConfigMode,
+  usePromptConfigModel,
+} from "../providers/prompt-config";
+import { useSessionLoading } from "../providers/session-loading";
 import { Mode } from "@kloud-code/database/enums";
 
 interface Props {
+  /** Optional override; defaults to session streaming status via context. */
   loading?: boolean;
 }
 
-function Hint({
-  keys,
-  label,
-  keyColor,
-  labelColor,
-}: {
+type HintSlot = {
   keys: string;
   label: string;
   keyColor: string;
   labelColor: string;
-}) {
+};
+
+// The number of hint slots never changes. Mounting or unmounting nodes next
+// to the focused textarea is what crashes OpenTUI, so idle/loading states
+// swap text content in a fixed tree instead of swapping subtrees.
+const HINT_SLOT_COUNT = 3;
+
+function Hint({ keys, label, keyColor, labelColor }: HintSlot) {
   return (
     <box flexDirection="row" gap={1} alignItems="center">
       <text fg={keyColor} attributes={TextAttributes.BOLD}>
@@ -29,13 +36,56 @@ function Hint({
   );
 }
 
-export function StatusBar({ loading = false }: Props) {
-  const { mode, model } = usePromptConfig();
+export function StatusBar({ loading: loadingProp }: Props) {
+  const sessionLoading = useSessionLoading();
+  const loading = loadingProp ?? sessionLoading;
+  const mode = usePromptConfigMode();
+  const model = usePromptConfigModel();
   const { colors } = useTheme();
 
   const isBuild = mode === Mode.BUILD;
-  const modeColor = isBuild ? colors.primary : colors.planMode;
-  const modeLabel = isBuild ? "build" : "plan";
+  const blank: HintSlot = {
+    keys: "",
+    label: "",
+    keyColor: colors.textMuted,
+    labelColor: colors.textDim,
+  };
+
+  const hints: HintSlot[] = loading
+    ? [
+      {
+        keys: "",
+        label: "working",
+        keyColor: colors.primary,
+        labelColor: colors.textMuted,
+      },
+      {
+        keys: "esc",
+        label: "interrupt",
+        keyColor: colors.error,
+        labelColor: colors.textMuted,
+      },
+    ]
+    : [
+      {
+        keys: "↵",
+        label: "send",
+        keyColor: colors.textMuted,
+        labelColor: colors.textDim,
+      },
+      {
+        keys: "⇧↵",
+        label: "newline",
+        keyColor: colors.textMuted,
+        labelColor: colors.textDim,
+      },
+      {
+        keys: "tab",
+        label: "mode",
+        keyColor: colors.textMuted,
+        labelColor: colors.textDim,
+      },
+    ];
 
   return (
     <box
@@ -45,47 +95,22 @@ export function StatusBar({ loading = false }: Props) {
       width="100%"
     >
       <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-        <text fg={modeColor} attributes={TextAttributes.BOLD}>
-          {modeLabel}
+        <text
+          fg={isBuild ? colors.primary : colors.planMode}
+          attributes={TextAttributes.BOLD}
+        >
+          {isBuild ? "build" : "plan"}
         </text>
         <text fg={colors.textGhost}>/</text>
         <text fg={colors.textMuted}>{model}</text>
       </box>
 
-      {loading ? (
-        <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-          <InputLoader />
-          <text fg={colors.textMuted}>working</text>
-          <text fg={colors.textGhost}>·</text>
-          <Hint
-            keys="esc"
-            label="interrupt"
-            keyColor={colors.error}
-            labelColor={colors.textMuted}
-          />
-        </box>
-      ) : (
-        <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
-          <Hint
-            keys="↵"
-            label="send"
-            keyColor={colors.textMuted}
-            labelColor={colors.textDim}
-          />
-          <Hint
-            keys="⇧↵"
-            label="newline"
-            keyColor={colors.textMuted}
-            labelColor={colors.textDim}
-          />
-          <Hint
-            keys="tab"
-            label="mode"
-            keyColor={colors.textMuted}
-            labelColor={colors.textDim}
-          />
-        </box>
-      )}
+      <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
+        <InputLoader active={loading} />
+        {Array.from({ length: HINT_SLOT_COUNT }, (_, slot) => (
+          <Hint key={`hint-${slot}`} {...(hints[slot] ?? blank)} />
+        ))}
+      </box>
     </box>
   );
 }
