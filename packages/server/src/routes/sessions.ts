@@ -44,12 +44,14 @@ const app = new Hono()
   .get("/", async (c) => {
     const sessions = await db.session.findMany({
       orderBy: {
-        createdAt: "desc",
+        updatedAt: "desc",
       },
       select: {
         id: true,
         title: true,
+        cwd: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
     Sentry.logger.info("Listed session", {

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate, useParams } from "react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BotMessage,
   UserMessage,
@@ -11,14 +11,20 @@ import z from "zod";
 import { useToast } from "../providers/toast";
 import { getErrorMessage } from "../lib/http-errors";
 import { SessionShell } from "../components/session-shell";
-import { useChat, type Message } from "../hooks/use-chat";
+import { useChat, type Message, type ClientMessagePart } from "../hooks/use-chat";
 import pretryMs from "pretty-ms"
-import { DEFAULT_CHAT_MODEL_ID, type SupportedChatModelId } from "@kloud-code/shared";
+import { messagePartsSchema, type SupportedChatModelId } from "@kloud-code/shared";
 import { useKeyboard } from "@opentui/react";
 import { MessageStatus } from "@kloud-code/database";
+import { Mode } from "@kloud-code/database/enums";
 import { useKeyboardLayer } from "../providers/keyboard-layer";
+import { writeLastSessionId, clearLastSessionId } from "../lib/last-session";
+import { LoadingPanel } from "../components/spinner";
 
 type SessionData = InferResponseType<typeof apiClient.sessions[":id"]["$get"], 200>
+
+
+
 function mapDbMessages(dbMessages: SessionData["messages"]): Message[] {
   return dbMessages.map((m): Message => {
     if (m.role === "ERROR") {
@@ -37,16 +43,24 @@ function mapDbMessages(dbMessages: SessionData["messages"]): Message[] {
         model: m.model as SupportedChatModelId
       }
     }
+
+    const parsedParts = m.parts === null ? null : messagePartsSchema.safeParse(m.parts);
+    const parts: ClientMessagePart[] = parsedParts?.success ? parsedParts.data.map((p): ClientMessagePart => {
+      if (p.type === "tool-call") {
+        return {
+          ...p,
+          status: "done" as const
+        }
+      }
+      return p;
+    }) : [];
     return {
       id: m.id,
       role: "assistant",
       content: m.content,
       model: m.model as SupportedChatModelId,
       mode: m.mode,
-      parts: [{
-        type: "text",
-        text: m.content
-      }],
+      parts: parts,
       ...(m.duration != null ? { duration: pretryMs(m.duration * 1000) } : {}),
       interrupted: m.status === MessageStatus.INTERRUPTED
     }
@@ -60,8 +74,12 @@ const sessionLocationSchema = z.object({
 })
 
 
-function ChatMessage({ msg }: {
+function ChatMessage({
+  msg,
+  streamingParts,
+}: {
   msg: Message
+  streamingParts?: ClientMessagePart[]
 }) {
   if (msg.role === "user") {
     return <UserMessage message={msg.content} mode={msg.mode} />
@@ -70,12 +88,23 @@ function ChatMessage({ msg }: {
   if (msg.role === "error") {
     return <ErrorMessage message={msg.content} />
   }
-  return <BotMessage parts={msg.parts} model={msg.model} mode={msg.mode} duration={msg.duration} streaming={false} interrupted={msg.interrupted} />
+
+  const isLive = streamingParts != null;
+  return (
+    <BotMessage
+      parts={isLive ? streamingParts : msg.parts}
+      model={msg.model}
+      mode={msg.mode}
+      duration={isLive ? undefined : msg.duration}
+      streaming={isLive}
+      interrupted={isLive ? false : msg.interrupted}
+    />
+  )
 }
 
 
 function SessionChats({
-  session
+  session,
 }: {
   session: SessionData
 }) {
@@ -99,30 +128,34 @@ function SessionChats({
     }
   })
 
+  const handleSubmit = useCallback((
+    text: string,
+    mode: Mode,
+    model: SupportedChatModelId,
+  ) => {
+    submit({
+      userText: text,
+      mode,
+      model,
+    });
+  }, [submit]);
 
+  const isStreaming = streaming.status === "streaming";
 
   return (
-    <SessionShell onSubmit={(text) => {
-      submit({
-        userText: text,
-        mode: "BUILD",
-        model: DEFAULT_CHAT_MODEL_ID
-      })
-    }} loading={streaming.status === "streaming"}>
+    <SessionShell onSubmit={handleSubmit} loading={isStreaming}>
       {
         messages.map((msg) => (
-          <ChatMessage key={msg.id} msg={msg} />
-        ))
-      }
-      {
-        streaming.status === "streaming" && (
-          <BotMessage
-            parts={streaming.parts}
-            model={streaming.model}
-            mode={streaming.mode}
-            streaming
+          <ChatMessage
+            key={msg.id}
+            msg={msg}
+            streamingParts={
+              isStreaming && streaming.messageId === msg.id
+                ? streaming.parts
+                : undefined
+            }
           />
-        )
+        ))
       }
     </SessionShell>
   )
@@ -137,6 +170,10 @@ export function Session() {
   const location = useLocation();
   const toast = useToast();
   const navigate = useNavigate();
+  const toastRef = useRef(toast);
+  const navigateRef = useRef(navigate);
+  toastRef.current = toast;
+  navigateRef.current = navigate;
 
   const prefetched = useMemo(() => {
     const parsed = sessionLocationSchema.safeParse(location.state);
@@ -146,11 +183,22 @@ export function Session() {
   const [session, setSession] = useState<SessionData | null>(prefetched);
 
   useEffect(() => {
-    if (prefetched) return;
+    if (id) writeLastSessionId(id);
+  }, [id]);
 
-    setSession(null);
+  useEffect(() => {
+    if (prefetched) {
+      setSession(prefetched);
+      return;
+    }
 
-    if (!id) return;
+    if (!id) {
+      setSession(null);
+      return;
+    }
+
+    // Only clear when switching sessions — keep current UI while refetching.
+    setSession((current) => (current?.id === id ? current : null));
 
     let ignore = false;
 
@@ -160,27 +208,39 @@ export function Session() {
         if (!res.ok) {
           throw new Error(await getErrorMessage(res));
         }
-        const session = await res.json();
+        const next = await res.json();
         if (ignore) return;
-        setSession(session);
+        setSession(next);
       } catch (error) {
         if (ignore) return;
-        toast.show({
+        toastRef.current.show({
           variant: "error",
           message: error instanceof Error ? error.message : "An unexpected error occurred",
         });
-        setSession(null);
-        navigate("/", { replace: true });
+        setSession((current) => {
+          // Stay put if the chat is already on screen (e.g. transient error mid-task).
+          if (current) return current;
+          // Cold start with a stale last-session id — go home cleanly.
+          clearLastSessionId();
+          navigateRef.current("/", { replace: true });
+          return null;
+        });
       }
     }
     fetchSession();
     return () => {
       ignore = true;
     }
-  }, [id, toast, prefetched, navigate]);
+  }, [id, prefetched]);
 
 
-  if (!session) return <SessionShell onSubmit={() => { }} inputDisabled={true} />;
+  if (!session) {
+    return (
+      <SessionShell onSubmit={() => { }} inputDisabled={true}>
+        <LoadingPanel message="Opening session…" />
+      </SessionShell>
+    );
+  }
 
   return (
     <SessionChats key={session.id} session={session} />

@@ -1,6 +1,6 @@
 import type { KeyBinding, TextareaRenderable } from "@opentui/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRenderer } from "@opentui/react";
+import { useKeyboard, useRenderer } from "@opentui/react";
 
 import { StatusBar } from "./status-bar";
 import { CommandMenu } from "./command-menu";
@@ -10,11 +10,12 @@ import { useToast } from "../providers/toast";
 import { useKeyboardLayer } from "../providers/keyboard-layer";
 import { useDialog } from "../providers/dialog";
 import { useTheme } from "../providers/theme";
+import { useNavigate } from "react-router";
+import { usePromptConfigActions } from "../providers/prompt-config";
 
 type Props = {
   onSubmit: (text: string) => void;
   disabled?: boolean;
-  loading?: boolean;
   width?: number | `${number}%`;
 };
 
@@ -23,14 +24,17 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
   { name: "return", action: "submit" },
   { name: "enter", shift: true, action: "newline" },
   { name: "return", shift: true, action: "newline" },
+  { name: "tab", action: "buffer-home" },
+  { name: "tab", shift: true, action: "buffer-home" },
 ];
 
 export function InputBar({
   onSubmit,
   disabled = false,
-  loading = false,
   width = "100%",
 }: Props) {
+  const navigate = useNavigate();
+  const { toggleMode, setMode, setModel, getMode } = usePromptConfigActions();
   const {
     resolveCommand,
     commandQuery,
@@ -42,21 +46,14 @@ export function InputBar({
   } = useCommandMenu();
 
   const textareaRef = useRef<TextareaRenderable>(null);
-  const onSubmitRef = useRef<() => void>(() => { });
+  const onSubmitRef = useRef<() => void>(() => {});
   const renderer = useRenderer();
   const toast = useToast();
-  const dialog = useDialog()
+  const dialog = useDialog();
   const { colors } = useTheme();
   const [focused, setFocused] = useState(!disabled);
-  const {
+  const { isTopLayer, setResponder } = useKeyboardLayer();
 
-    isTopLayer,
-    setResponder
-
-  } = useKeyboardLayer();
-  // ----------------------------
-  // COMMAND HANDLER (FIXED)
-  // ----------------------------
   const handleCommand = useCallback(
     (command: Command | undefined) => {
       const textarea = textareaRef.current;
@@ -66,20 +63,23 @@ export function InputBar({
 
       if (command.action) {
         command.action({
-          exit: () => renderer.destroy(),
+          // Tearing the renderer down inside a key handler kills the process
+          // mid-commit, so let the current frame finish first.
+          exit: () => setTimeout(() => renderer.destroy(), 0),
           toast,
-          dialog
+          dialog,
+          navigate,
+          mode: getMode(),
+          setMode,
+          setModel,
         });
       } else {
         textarea.insertText(`${command.value} `);
       }
     },
-    [renderer, toast, dialog]
+    [renderer, toast, dialog, navigate, getMode, setMode, setModel],
   );
 
-  // ----------------------------
-  // SUBMIT NORMAL MESSAGE
-  // ----------------------------
   const handleSubmit = useCallback(() => {
     if (disabled) return;
 
@@ -93,9 +93,6 @@ export function InputBar({
     textarea.setText("");
   }, [disabled, onSubmit]);
 
-  // ----------------------------
-  // CONTENT CHANGE
-  // ----------------------------
   const handleTextareaContentChange = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -103,20 +100,14 @@ export function InputBar({
     handleContentChange(textarea.plainText);
   }, [handleContentChange]);
 
-  // ----------------------------
-  // COMMAND EXECUTE (FIXED)
-  // ----------------------------
   const handleCommandExecute = useCallback(
     (index: number) => {
       const command = resolveCommand(index);
       handleCommand(command);
     },
-    [resolveCommand, handleCommand]
+    [resolveCommand, handleCommand],
   );
 
-  // ----------------------------
-  // REGISTER ONCE
-  // ----------------------------
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -126,9 +117,6 @@ export function InputBar({
     };
   }, []);
 
-  // ----------------------------
-  // ALWAYS LATEST LOGIC
-  // ----------------------------
   useEffect(() => {
     onSubmitRef.current = () => {
       if (disabled) return;
@@ -149,7 +137,15 @@ export function InputBar({
     handleCommand,
     handleSubmit,
   ]);
-  // register base layer responder
+
+  useKeyboard((key) => {
+    if (disabled) return;
+    if (!isTopLayer("base")) return;
+    if (showCommandMenu) return;
+    if (key.name !== "tab") return;
+    key.preventDefault();
+    toggleMode();
+  });
 
   useEffect(() => {
     setResponder("base", () => {
@@ -159,13 +155,11 @@ export function InputBar({
         textarea.setText("");
         return true;
       }
-      return true
+      return true;
     });
-    return () => setResponder("base", null)
-  }, [disabled, setResponder])
-  // ----------------------------
-  // UI
-  // ----------------------------
+    return () => setResponder("base", null);
+  }, [disabled, setResponder]);
+
   return (
     <box width={width} flexDirection="row">
       <box
@@ -173,18 +167,20 @@ export function InputBar({
         backgroundColor={focused ? colors.accent : colors.accentMuted}
       />
 
+      {/*
+        Command menu stays always mounted (height 0 when closed) to avoid
+        OpenTUI "Anchor does not exist". StatusBar stays inside the bordered
+        input chrome — mode label updates imperatively on Tab.
+      */}
       <box flexGrow={1} flexDirection="column">
-        {showCommandMenu && (
-          <box paddingX={1}>
-            <CommandMenu
-              query={commandQuery}
-              selectedIndex={selectedIndex}
-              scrollRef={scrollRef}
-              onSelect={setSelectedIndex}
-              onExecute={handleCommandExecute}
-            />
-          </box>
-        )}
+        <CommandMenu
+          open={showCommandMenu}
+          query={commandQuery}
+          selectedIndex={selectedIndex}
+          scrollRef={scrollRef}
+          onSelect={setSelectedIndex}
+          onExecute={handleCommandExecute}
+        />
 
         <box
           flexGrow={1}
@@ -199,7 +195,9 @@ export function InputBar({
         >
           <textarea
             ref={textareaRef}
-            focused={!disabled && (isTopLayer("base") || isTopLayer("command"))}
+            focused={
+              !disabled && (isTopLayer("base") || isTopLayer("command"))
+            }
             placeholder="Ask anything..."
             keyBindings={TEXTAREA_KEY_BINDINGS}
             placeholderColor={colors.textGhost}
@@ -213,7 +211,7 @@ export function InputBar({
             }}
           />
 
-          <StatusBar loading={loading} />
+          <StatusBar />
         </box>
       </box>
     </box>

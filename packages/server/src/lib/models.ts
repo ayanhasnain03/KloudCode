@@ -8,6 +8,8 @@ import {
   type SupportedProvider
 } from "@kloud-code/shared"
 import type { LanguageModel } from "ai";
+import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
 
 type AnthropicModelId = Extract<SupportedChatModel, { provider: "anthropic" }>["id"]
 type OpenAIModelId = Extract<SupportedChatModel, { provider: "openai" }>["id"];
@@ -18,8 +20,45 @@ export type ResolvedModel = {
   model: LanguageModel;
   provider: SupportedProvider;
   modelId: SupportedChatModelId;
+  maxOutputTokens?: number;
+  providerOptions?: {
+    openai?: OpenAIResponsesProviderOptions;
+    anthropic?: AnthropicProviderOptions;
+  };
 };
 
+const ANTHROPIC_PROVIDER_OPTIONS: Partial<Record<AnthropicModelId, AnthropicProviderOptions>> = {
+  "claude-opus-4-6": {
+    thinking: {
+      type: "adaptive",
+      display: "summarized",
+    },
+    effort: "medium",
+  },
+  "claude-sonnet-4-6": {
+    thinking: {
+      type: "adaptive",
+      display: "summarized",
+    },
+    effort: "medium",
+  },
+}
+
+const GPT54_REASONING_OPTIONS: OpenAIResponsesProviderOptions = {
+  reasoningSummary: "auto",
+};
+
+const OPENAI_REASONING_OPTIONS: OpenAIResponsesProviderOptions = {
+  reasoningSummary: "auto",
+};
+
+const OPENAI_PROVIDER_OPTIONS: Partial<Record<OpenAIModelId, OpenAIResponsesProviderOptions>> = {
+  "gpt-5.4": GPT54_REASONING_OPTIONS,
+  "gpt-5.4-mini": GPT54_REASONING_OPTIONS,
+  "gpt-5.4-nano": GPT54_REASONING_OPTIONS,
+  "gpt-5-mini": OPENAI_REASONING_OPTIONS,
+  "o4-mini": OPENAI_REASONING_OPTIONS,
+}
 
 
 function assertUnsupportedProvider(provider: never): never {
@@ -28,17 +67,21 @@ function assertUnsupportedProvider(provider: never): never {
 
 
 function resolveAnthropicModel(modelId: AnthropicModelId): ResolvedModel {
+  const options = ANTHROPIC_PROVIDER_OPTIONS[modelId];
   return {
     model: anthropic(modelId),
     provider: "anthropic",
-    modelId
+    modelId,
+    providerOptions: options ? { anthropic: options } : undefined,
   }
 };
 function resolveOpenAIModel(modelId: OpenAIModelId): ResolvedModel {
+  const options = OPENAI_PROVIDER_OPTIONS[modelId];
   return {
     model: openai(modelId),
     provider: "openai",
-    modelId
+    modelId,
+    providerOptions: options ? { openai: options } : undefined,
   }
 };
 

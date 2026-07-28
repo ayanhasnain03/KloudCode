@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 
 import type { ReactNode } from "react";
 
@@ -48,10 +48,7 @@ export function DialogProvider({
     })
   }, [push, close])
 
-  const value: DialogContextValue = {
-    open,
-    close,
-  };
+  const value = useMemo<DialogContextValue>(() => ({ open, close }), [open, close]);
 
   return (
     <DialogContext.Provider value={value}>
@@ -80,80 +77,77 @@ function Dialog({ currentDialog, close }: DialogProps) {
     }
   });
 
-  if (!currentDialog) {
-    return null;
-  }
+  const isOpen = currentDialog !== null;
+  const dialogWidth = Math.min(currentDialog?.width ?? 56, dimensions.width - 8);
 
-  const { title, description, children, hints } = currentDialog;
-  const dialogWidth = Math.min(56, dimensions.width - 8);
-
+  // The overlay root stays mounted even when closed. Removing and re-adding
+  // this absolutely positioned node is a structural mutation of the OpenTUI
+  // tree, which is what crashes the renderer.
   return (
     <box
       position="absolute"
       left={0}
       top={0}
-      width={dimensions.width}
-      height={dimensions.height}
+      width={isOpen ? dimensions.width : 0}
+      height={isOpen ? dimensions.height : 0}
       justifyContent="center"
       alignItems="center"
-      backgroundColor={RGBA.fromInts(0, 0, 0, 165)}
+      backgroundColor={isOpen ? RGBA.fromInts(0, 0, 0, 165) : undefined}
       zIndex={100}
       onMouseDown={() => close()}
     >
-      <box
-        width={dialogWidth}
-        flexDirection="row"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <box width={1} backgroundColor={colors.primary} />
-
+      {currentDialog && (
         <box
-          flexGrow={1}
-          flexDirection="column"
-          backgroundColor={colors.dialogSurface}
-          border
-          borderStyle="rounded"
-          borderColor={colors.border}
-          paddingX={2}
-          paddingY={1}
-          gap={1}
+          width={dialogWidth}
+          flexDirection="row"
+          onMouseDown={(e) => e.stopPropagation()}
         >
+          <box width={1} backgroundColor={colors.primary} />
+
           <box
-            flexDirection="row"
-            alignItems="flex-start"
-            justifyContent="space-between"
+            flexGrow={1}
+            flexDirection="column"
+            backgroundColor={colors.dialogSurface}
+            border
+            borderStyle="rounded"
+            borderColor={colors.border}
+            paddingX={2}
+            paddingY={1}
+            gap={1}
           >
-            <box flexDirection="column" gap={0} flexGrow={1}>
-              <text attributes={TextAttributes.BOLD} fg={colors.text}>
-                {title}
-              </text>
-              {description && (
-                <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
-                  {description}
+            <box
+              flexDirection="row"
+              alignItems="flex-start"
+              justifyContent="space-between"
+            >
+              <box flexDirection="column" gap={0} flexGrow={1}>
+                <text attributes={TextAttributes.BOLD} fg={colors.text}>
+                  {currentDialog.title}
                 </text>
-              )}
-            </box>
+                <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+                  {currentDialog.description ?? ""}
+                </text>
+              </box>
 
-            <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
-              esc
-            </text>
-          </box>
-
-          <box height={1} width="100%" backgroundColor={colors.borderSoft} />
-
-          <box flexGrow={1}>
-            {children}
-          </box>
-
-          {hints && (
-            <box flexDirection="row" justifyContent="center">
               <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
-                {hints}
+                esc
               </text>
             </box>
-          )}
+
+            <box height={1} width="100%" backgroundColor={colors.borderSoft} />
+
+            <box flexGrow={1}>
+              {currentDialog.children}
+            </box>
+
+            <box flexDirection="row" justifyContent="center" height={1}>
+              <text attributes={TextAttributes.DIM} fg={colors.textGhost}>
+                {currentDialog.hints ?? ""}
+              </text>
+            </box>
+          </box>
         </box>
-      </box>
+      )}
     </box>
   );
 };

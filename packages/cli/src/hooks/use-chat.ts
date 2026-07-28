@@ -20,14 +20,27 @@ import {
 }
   from "@kloud-code/shared";
 
-// Batch streaming re-renders to ~30fps so the terminal repaints smoothly
-// instead of thrashing once per streamed token.
-const STREAM_EMIT_INTERVAL_MS = 32;
+// Batch streaming re-renders. Tool-heavy turns (bash installs) used to emit
+// on every event and mount OpenTUI nodes until the process segfaulted.
+const STREAM_EMIT_INTERVAL_MS = 150;
 
 export type ClientMessagePart = {
   type: "text",
   text: string
-};
+} | {
+  type: "reasoning";
+  text: string;
+} |
+  ClientToolCallPart
+
+export type ClientToolCallPart = {
+  type: "tool-call";
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+  status: "calling" | "done";
+}
 
 
 export type Message =
@@ -53,6 +66,7 @@ type StreamingState =
   | { status: "idle" }
   | {
     status: "streaming";
+    messageId: string;
     parts: ClientMessagePart[];
     mode: Mode;
     model: SupportedChatModelId
@@ -60,8 +74,9 @@ type StreamingState =
 
 
 type ActiveStream = {
-  requestId: string; // unique identifier for the active stream
-  controller: AbortController; // controller to abort the stream
+  requestId: string;
+  messageId: string;
+  controller: AbortController;
   mode: Mode;
   model: SupportedChatModelId;
   parts: ClientMessagePart[];
@@ -77,7 +92,7 @@ type SubmitParams = {
 type RunStreamParams = {
   mode: Mode;
   model: SupportedChatModelId;
-  request: (controller: AbortController) => Promise<ClientResponse<unknown>>; // request to the API to stream the response
+  request: (controller: AbortController) => Promise<ClientResponse<unknown>>;
 };
 
 
@@ -91,7 +106,7 @@ export function useChat(
     status: "idle"
   });
 
-  const activeStreamRef = useRef<ActiveStream | null>(null); // reference to the active stream
+  const activeStreamRef = useRef<ActiveStream | null>(null);
 
   const updateMessages = useCallback((updater: (prev: Message[]) => Message[]) => {
     setMessages((prev) => updater(prev))
@@ -101,60 +116,36 @@ export function useChat(
     return activeStreamRef.current?.requestId === requestId;
   }, []);
 
+  // Deep-clone so React/OpenTUI always sees new part objects (not mutated refs).
+  const snapshotParts = useCallback((parts: ClientMessagePart[]): ClientMessagePart[] => {
+    return parts.map((p) => {
+      if (p.type === "tool-call") {
+        return { ...p, args: { ...p.args } };
+      }
+      return { ...p };
+    });
+  }, []);
 
-
-  // emit the parts to the active stream to update the UI
   const emitParts = useCallback((
     requestId: string,
     parts: ClientMessagePart[]
   ) => {
     if (!isActiveRequest(requestId)) return;
 
-    const snapshot = [...parts]; // create a snapshot of the parts to avoid mutating the original array
+    const snapshot = snapshotParts(parts);
     const activeStream = activeStreamRef.current;
     if (!activeStream) return;
 
-    activeStream.parts = snapshot; // update the active stream with the new parts
+    activeStream.parts = snapshot;
     setStreaming({
       status: "streaming",
+      messageId: activeStream.messageId,
       parts: snapshot,
       mode: activeStream.mode,
       model: activeStream.model
     });
 
-  }, [isActiveRequest])
-
-  const captureInterruptedMessage =
-    useCallback((
-      activeStream: ActiveStream,
-    ) => {
-
-      if (activeStream.interruptedCaptured || activeStream.parts.length === 0) {
-        return;
-      }
-
-      activeStream.interruptedCaptured = true;
-      const parts = [...activeStream.parts];
-
-      const fullText = parts
-        .filter((p) => p.type === "text")
-        .map((p) => p.text)
-        .join("");
-
-      updateMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: fullText,
-          mode: activeStream.mode,
-          model: activeStream.model,
-          parts: parts,
-          interrupted: true
-        }
-      ])
-
-    }, [updateMessages])
+  }, [isActiveRequest, snapshotParts])
 
   const clearStream = useCallback((
     requestId: string
@@ -166,108 +157,221 @@ export function useChat(
     })
   }, [isActiveRequest]);
 
+  // Replace the in-list placeholder (same id/key) instead of unmounting a
+  // streaming sibling and inserting a new row — that pattern crashes OpenTUI.
+  const finishStreamWithMessage = useCallback((
+    requestId: string,
+    message: Message,
+  ) => {
+    if (!isActiveRequest(requestId)) return;
+    const messageId = activeStreamRef.current?.messageId;
+    activeStreamRef.current = null;
+    // Update the message first; defer idle so StatusBar loading flip does not
+    // reconcile in the same commit as the scrollbox finalize (segfaults OpenTUI).
+    updateMessages((prev) => {
+      if (messageId && prev.some((m) => m.id === messageId)) {
+        return prev.map((m) => (m.id === messageId ? message : m));
+      }
+      return [...prev, message];
+    });
+    setTimeout(() => {
+      setStreaming((prev) =>
+        prev.status === "streaming" && prev.messageId === messageId
+          ? { status: "idle" }
+          : prev,
+      );
+    }, 50);
+  }, [isActiveRequest, updateMessages]);
+
   const handleStream = useCallback(async (
-    response: ClientResponse<unknown>, // response from the API
-    activeStream: ActiveStream // active stream to update the UI
+    response: ClientResponse<unknown>,
+    activeStream: ActiveStream
   ) => {
     if (!isActiveRequest(activeStream.requestId)) return;
     if (!response.ok) {
       const message = await getErrorMessage(response);
-      updateMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "error",
-          content: message
-        }
-      ]);
+      // Keep assistant role so we don't unmount BotMessage → ErrorMessage (OpenTUI crash).
+      finishStreamWithMessage(activeStream.requestId, {
+        id: activeStream.messageId,
+        role: "assistant",
+        content: message,
+        mode: activeStream.mode,
+        model: activeStream.model,
+        parts: [{ type: "text", text: message }],
+        interrupted: true,
+      });
       return;
     };
 
     const parts: ClientMessagePart[] = [];
     let lastEmitAt = 0;
+    let finalized = false;
+    let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // pipe the response through the text decoder and the event source parser to get the events
+    const flushEmit = () => {
+      if (emitTimer) {
+        clearTimeout(emitTimer);
+        emitTimer = null;
+      }
+      lastEmitAt = Date.now();
+      emitParts(activeStream.requestId, parts);
+    };
+
+    const scheduleEmit = () => {
+      if (!isActiveRequest(activeStream.requestId)) return;
+      const now = Date.now();
+      const elapsed = now - lastEmitAt;
+      if (elapsed >= STREAM_EMIT_INTERVAL_MS) {
+        flushEmit();
+        return;
+      }
+      if (emitTimer) return;
+      emitTimer = setTimeout(() => {
+        emitTimer = null;
+        if (!isActiveRequest(activeStream.requestId) || finalized) return;
+        flushEmit();
+      }, STREAM_EMIT_INTERVAL_MS - elapsed);
+    };
+
+    const finalizeAssistant = (
+      durationMs?: number,
+      interrupted = false,
+    ) => {
+      if (finalized || !isActiveRequest(activeStream.requestId)) return;
+      finalized = true;
+      const fullText = parts
+        .filter((p): p is Extract<ClientMessagePart, { type: "text" }> => p.type === "text")
+        .map((p) => p.text)
+        .join("");
+
+      activeStream.parts = snapshotParts(parts);
+      flushEmit();
+      finishStreamWithMessage(activeStream.requestId, {
+        id: activeStream.messageId,
+        role: "assistant",
+        content: fullText,
+        mode: activeStream.mode,
+        model: activeStream.model,
+        ...(durationMs != null ? { duration: prettyMs(durationMs) } : {}),
+        parts: snapshotParts(parts),
+        ...(interrupted ? { interrupted: true } : {}),
+      });
+    };
+
     const stream = response
       .body!.pipeThrough(new TextDecoderStream())
       .pipeThrough(new EventSourceParserStream());
-    for await (const { data } of stream as unknown as AsyncIterable<{ data: string }>) {
-      if (!isActiveRequest(activeStream.requestId) || !data) return;
+    try {
+      for await (const { data } of stream as unknown as AsyncIterable<{ data: string }>) {
+        if (!isActiveRequest(activeStream.requestId)) return;
+        if (!data) continue;
 
-      let parsed: ChatStreamEvent;
-      try {
-        parsed = chatStreamEventSchema.parse(JSON.parse(data));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Invalid stream event";
+        let parsed: ChatStreamEvent;
+        try {
+          parsed = chatStreamEventSchema.parse(JSON.parse(data));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Invalid stream event";
 
-        updateMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "error",
-            content: message
-          }
-        ]);
-        break;
-      }
-
-      const event = parsed;
-      switch (event.type) {
-        case "text-delta": {
-          const last = parts[parts.length - 1];
-          if (last && last.type === "text") {
-            last.text += event.text;
-          } else {
-            parts.push({
-              type: "text",
-              text: event.text
-            })
-          }
-          // Throttle emits so the UI updates at a steady cadence rather than
-          // re-rendering on every token. The first delta always paints
-          // immediately (lastEmitAt starts at 0).
-          const now = Date.now();
-          if (now - lastEmitAt >= STREAM_EMIT_INTERVAL_MS) {
-            lastEmitAt = now;
-            emitParts(activeStream.requestId, parts);
-          }
+          finishStreamWithMessage(activeStream.requestId, {
+            id: activeStream.messageId,
+            role: "assistant",
+            content: message,
+            mode: activeStream.mode,
+            model: activeStream.model,
+            parts: [{ type: "text", text: message }],
+            interrupted: true,
+          });
+          finalized = true;
           break;
         }
-        case "done": {
-          if (!isActiveRequest(activeStream.requestId)) return;
-          const fullText = parts
-            .filter((p) => p.type === "text")
-            .map((p) => p.text)
-            .join("");
 
-          updateMessages((prev) => [
-            ...prev,
-            {
-              id: event.messageId,
+        const event = parsed;
+        switch (event.type) {
+          case "ping":
+            // Keepalive from server during long bash/tool execution.
+            break;
+          case "text-delta": {
+            const last = parts[parts.length - 1];
+            if (last && last.type === "text") {
+              last.text += event.text;
+            } else {
+              parts.push({
+                type: "text",
+                text: event.text
+              })
+            }
+            scheduleEmit();
+            break;
+          }
+
+          case "reasoning-delta": {
+            const last = parts[parts.length - 1];
+            if (last && last.type === "reasoning") {
+              last.text += event.text;
+            } else {
+              parts.push({
+                type: "reasoning",
+                text: event.text
+              })
+            }
+            scheduleEmit();
+            break;
+          }
+          case "tool-call": {
+            parts.push({
+              type: "tool-call",
+              id: event.toolCallId,
+              name: event.toolName,
+              args: event.args,
+              status: "calling"
+            })
+            scheduleEmit();
+            break;
+          }
+          case "tool-result": {
+            const toolCallPart = parts.find((p): p is Extract<ClientMessagePart, { type: "tool-call" }> => p.type === "tool-call" && p.id === event.toolCallId);
+            if (toolCallPart) {
+              toolCallPart.result = event.result;
+              toolCallPart.status = "done";
+            }
+            scheduleEmit();
+            break;
+          }
+          case "done": {
+            finalizeAssistant(event.durationMs, false);
+            break
+          }
+          case "error": {
+            finalized = true;
+            if (emitTimer) {
+              clearTimeout(emitTimer);
+              emitTimer = null;
+            }
+            finishStreamWithMessage(activeStream.requestId, {
+              id: activeStream.messageId,
               role: "assistant",
-              content: fullText,
+              content: event.message,
               mode: activeStream.mode,
               model: activeStream.model,
-              duration: prettyMs(event.durationMs),
-              parts: [...parts]
-            }
-          ]);
-          break
-        }
-        case "error": {
-          updateMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: "error",
-              content: event.message
-            }
-          ]);
-          break;
+              parts: [{ type: "text", text: event.message }],
+              interrupted: true,
+            });
+            break;
+          }
         }
       }
+
+      // Connection dropped mid-tool — keep work so far.
+      if (!finalized && isActiveRequest(activeStream.requestId) && parts.length > 0) {
+        finalizeAssistant(undefined, true);
+      }
+    } finally {
+      if (emitTimer) {
+        clearTimeout(emitTimer);
+        emitTimer = null;
+      }
     }
-  }, [updateMessages, emitParts, isActiveRequest]);
+  }, [finishStreamWithMessage, emitParts, isActiveRequest, snapshotParts]);
 
   const runStream = useCallback(async (
     {
@@ -277,8 +381,10 @@ export function useChat(
     }: RunStreamParams
   ) => {
     const controller = new AbortController();
+    const messageId = crypto.randomUUID();
     const activeStream: ActiveStream = {
       requestId: crypto.randomUUID(),
+      messageId,
       controller,
       mode,
       model,
@@ -287,8 +393,21 @@ export function useChat(
     };
 
     activeStreamRef.current = activeStream;
+    // Mount the assistant row once up front; stream updates reuse this id/key.
+    updateMessages((prev) => [
+      ...prev,
+      {
+        id: messageId,
+        role: "assistant",
+        content: "",
+        mode,
+        model,
+        parts: [],
+      },
+    ]);
     setStreaming({
       status: "streaming",
+      messageId,
       parts: [],
       mode,
       model
@@ -304,34 +423,70 @@ export function useChat(
 
       const msg = error instanceof Error ? error.message : String(error);
 
-      updateMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "error",
-          content: msg
-        }
-      ]);
+      finishStreamWithMessage(activeStream.requestId, {
+        id: activeStream.messageId,
+        role: "assistant",
+        content: msg,
+        mode: activeStream.mode,
+        model: activeStream.model,
+        parts: [{ type: "text", text: msg }],
+        interrupted: true,
+      });
     } finally {
       clearStream(activeStream.requestId)
     }
 
-  }, [clearStream, handleStream, isActiveRequest, updateMessages]);
+  }, [clearStream, finishStreamWithMessage, handleStream, isActiveRequest, updateMessages]);
 
   const stopActiveStream = useCallback((
     capturePartial: boolean,
   ) => {
     const activeStream = activeStreamRef.current;
     if (!activeStream) return;
-    if (capturePartial) {
-      captureInterruptedMessage(activeStream);
+
+    const shouldCapture =
+      capturePartial &&
+      !activeStream.interruptedCaptured &&
+      activeStream.parts.length > 0;
+
+    if (shouldCapture) {
+      activeStream.interruptedCaptured = true;
     }
+
+    const partialParts = shouldCapture ? snapshotParts(activeStream.parts) : null;
+    const { mode, model, controller, messageId } = activeStream;
+
     activeStreamRef.current = null;
-    setStreaming({
-      status: "idle"
-    });
-    activeStream.controller.abort();
-  }, [captureInterruptedMessage])
+    setStreaming({ status: "idle" });
+    controller.abort();
+
+    if (partialParts) {
+      const fullText = partialParts
+        .filter((p): p is Extract<ClientMessagePart, { type: "text" }> => p.type === "text")
+        .map((p) => p.text)
+        .join("");
+
+      updateMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+              id: messageId,
+              role: "assistant" as const,
+              content: fullText,
+              mode,
+              model,
+              parts: partialParts,
+              interrupted: true
+            }
+            : m
+        )
+      );
+    } else {
+      // Drop the empty placeholder when aborting with nothing to keep.
+      updateMessages((prev) => prev.filter((m) => m.id !== messageId));
+    }
+  }, [snapshotParts, updateMessages])
+
   const resume = useCallback(async ({
     mode, model
   }: Omit<SubmitParams, "userText">) => {
@@ -367,7 +522,6 @@ export function useChat(
     mode,
     model
   }: SubmitParams) => {
-    // show the partial message that was captured before the user submitted the new message
     stopActiveStream(true);
 
     const userMessage: Message = {

@@ -52,7 +52,10 @@ function persistTheme(theme: Theme) {
 type ThemeContextValue = {
   colors: ThemeColors,
   currentTheme: Theme,
+  /** Applies a theme and writes it to the preference file. */
   setTheme: (theme: Theme) => void
+  /** Applies a theme for the current run only, leaving the saved preference untouched. */
+  previewTheme: (theme: Theme) => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -77,9 +80,13 @@ export function ThemeProvider({
     persistTheme(theme)
   }, []);
 
+  const previewTheme = useCallback((theme: Theme) => {
+    setCurrentTheme(theme);
+  }, []);
+
   return (
     <ThemeContext.Provider value={{
-      colors: currentTheme.colors, currentTheme, setTheme
+      colors: currentTheme.colors, currentTheme, setTheme, previewTheme
     }}>
       {children}
     </ThemeContext.Provider>

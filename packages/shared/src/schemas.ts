@@ -11,7 +11,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     text: z.string(),
   }),
   z.object({
-    type: z.literal("tool_call"),
+    type: z.literal("tool-call"),
     id: z.string(),
     name: z.string(),
     args: toolCallArgsSchema,
@@ -20,7 +20,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("text"),
     text: z.string(),
-  })
+  }),
 ]);
 
 
@@ -44,9 +44,12 @@ export const chatStreamEventSchema = z.discriminatedUnion("type", [
     args: toolCallArgsSchema,
   }),
   z.object({
-    type: z.literal("tool--result"),
+    type: z.literal("tool-result"),
     toolCallId: z.string(),
     result: z.string(),
+  }),
+  z.object({
+    type: z.literal("ping"),
   }),
   z.object({
     type: z.literal("done"),
