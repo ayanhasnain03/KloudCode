@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   useCallback,
-  useEffect,
   useMemo,
 } from "react";
 
@@ -14,13 +13,15 @@ import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ToastOptions, ToastVariant } from "../types";
 
-import { DEFAULT_DURATION } from "../types";
-import { toastIcons, toastLabels } from "../../theme";
+import { DEFAULT_DURATION, VARIANT_DURATION } from "../types";
+import { toastIcons } from "../../theme";
 import { useTheme } from "../theme";
-import { StatusIconBadge } from "../../components/messages/status-icon-badge";
 
 export type ToastContextValue = {
   show: (options: ToastOptions) => void;
+  success: (message: string, title?: string) => void;
+  error: (message: string, title?: string) => void;
+  info: (message: string, title?: string) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -43,7 +44,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
   const [currentToast, setCurrentToast] =
     useState<ToastOptions | null>(null);
 
-  const timeOutHandleRef = useRef<NodeJS.Timeout | null>(null);
+  const timeOutHandleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearCurrentTimeout = useCallback(() => {
     if (timeOutHandleRef.current) {
@@ -54,24 +55,35 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
   const show = useCallback(
     (opt: ToastOptions) => {
-      const duration = opt.duration ?? DEFAULT_DURATION;
+      const variant = opt.variant ?? "info";
+      const duration =
+        opt.duration ?? VARIANT_DURATION[variant] ?? DEFAULT_DURATION;
 
       clearCurrentTimeout();
 
       setCurrentToast({
-        variant: opt.variant ?? "info",
         ...opt,
+        variant,
         duration,
       });
 
       timeOutHandleRef.current = setTimeout(() => {
         setCurrentToast(null);
-      }, duration).unref();
+        timeOutHandleRef.current = null;
+      }, duration);
     },
-    [clearCurrentTimeout]
+    [clearCurrentTimeout],
   );
 
-  const value = useMemo<ToastContextValue>(() => ({ show }), [show]);
+  const value = useMemo<ToastContextValue>(
+    () => ({
+      show,
+      success: (message, title) => show({ message, title, variant: "success" }),
+      error: (message, title) => show({ message, title, variant: "error" }),
+      info: (message, title) => show({ message, title, variant: "info" }),
+    }),
+    [show],
+  );
 
   return (
     <ToastContext.Provider value={value}>
@@ -88,102 +100,51 @@ type ToastProps = {
 function Toast({ currentToast }: ToastProps) {
   const { width } = useTerminalDimensions();
   const { colors } = useTheme();
-  const [progress, setProgress] = useState(1);
 
-  useEffect(() => {
-    if (!currentToast) {
-      setProgress(1);
-      return;
-    }
-
-    const duration = currentToast.duration ?? DEFAULT_DURATION;
-    const startedAt = Date.now();
-
-    const tick = () => {
-      const elapsed = Date.now() - startedAt;
-      setProgress(Math.max(0, 1 - elapsed / duration));
-    };
-
-    tick();
-    const interval = setInterval(tick, 40);
-    return () => clearInterval(interval);
-  }, [currentToast]);
-
+  const isOpen = currentToast !== null;
   const variant: ToastVariant = currentToast?.variant ?? "info";
   const accent = colors[variant];
   const icon = toastIcons[variant];
-  const label = toastLabels[variant];
-  const toastWidth = Math.max(32, Math.min(52, width - 8));
-  const hasTitle = Boolean(currentToast?.title);
-  const progressWidth = Math.max(0, Math.round((toastWidth - 2) * progress));
+  const message = currentToast?.title
+    ? `${currentToast.title} — ${currentToast.message}`
+    : (currentToast?.message ?? "");
 
-  // Same reasoning as the dialog overlay: keep this absolutely positioned
-  // node mounted and collapse it instead of unmounting it.
+  // Compact single-line toast; fixed size avoids OpenTUI expand-after-0 bugs.
+  const toastWidth = Math.max(28, Math.min(48, width - 8));
+  const toastHeight = 3;
+
   return (
     <box
       position="absolute"
-      top={2}
+      top={1}
       right={2}
-      width={currentToast ? toastWidth : 0}
-      height={currentToast ? undefined : 0}
-      flexDirection="row"
+      width={isOpen ? toastWidth : 0}
+      height={isOpen ? toastHeight : 0}
       overflow="hidden"
       zIndex={90}
     >
       {currentToast && (
-        <>
-          <box width={1} backgroundColor={accent} />
-
-          <box
-            flexGrow={1}
-            flexDirection="column"
-            backgroundColor={colors.surface}
-            border
-            borderStyle="rounded"
-            borderColor={colors.borderSoft}
-          >
-            <box
-              flexDirection="row"
-              gap={1}
-              alignItems="flex-start"
-              paddingX={2}
-              paddingY={1}
-            >
-              <StatusIconBadge icon={icon} color={accent} />
-
-              <box flexDirection="column" flexGrow={1} gap={0}>
-                <text
-                  fg={accent}
-                  attributes={TextAttributes.BOLD}
-                >
-                  {label}
-                </text>
-
-                <text
-                  fg={colors.text}
-                  wrapMode="word"
-                  width="100%"
-                >
-                  {currentToast.title ?? ""}
-                </text>
-
-                <text
-                  fg={hasTitle ? colors.textMuted : colors.text}
-                  attributes={hasTitle ? TextAttributes.DIM : undefined}
-                  wrapMode="word"
-                  width="100%"
-                >
-                  {currentToast.message}
-                </text>
-              </box>
-            </box>
-
-            <box flexDirection="row" height={1} width="100%">
-              <box width={progressWidth} backgroundColor={accent} />
-              <box flexGrow={1} backgroundColor={colors.borderSoft} />
-            </box>
-          </box>
-        </>
+        <box
+          width="100%"
+          height="100%"
+          flexDirection="row"
+          alignItems="center"
+          gap={1}
+          paddingX={1}
+          backgroundColor={colors.surface}
+          border
+          borderStyle="rounded"
+          borderColor={colors.borderSoft}
+        >
+          <text fg={accent} attributes={TextAttributes.BOLD}>
+            {icon}
+          </text>
+          <text fg={colors.textMuted} wrapMode="none">
+            {message.length > toastWidth - 6
+              ? `${message.slice(0, toastWidth - 9)}…`
+              : message}
+          </text>
+        </box>
       )}
     </box>
   );

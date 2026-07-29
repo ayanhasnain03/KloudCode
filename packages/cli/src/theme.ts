@@ -761,8 +761,8 @@ export const DEFAULT_THEME = THEMES[0]!;
 
 export const toastIcons = {
   success: "✓",
-  error: "×",
-  info: "◈",
+  error: "✕",
+  info: "•",
 } as const;
 
 export const toastLabels = {

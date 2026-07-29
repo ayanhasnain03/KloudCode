@@ -7,8 +7,9 @@ import { Session } from "./screens/session";
 import { Home } from "./screens/home";
 import { NewSession } from "./screens/new-session";
 import { readLastSessionId } from "./lib/last-session";
+import { isLoggedIn } from "./lib/auth";
 
-const lastSessionId = readLastSessionId();
+const lastSessionId = isLoggedIn() ? readLastSessionId() : null;
 const initialEntries = lastSessionId
   ? [`/sessions/${lastSessionId}`]
   : ["/"];

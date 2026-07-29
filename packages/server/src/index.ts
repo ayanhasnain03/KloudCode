@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/hono/bun";
 import { HTTPException } from 'hono/http-exception';
 import chat from "./routes/chat"
 import sessions from './routes/sessions';
+import auth from './routes/auth';
 const app = new Hono()
 app.use(
   sentry(app, {
@@ -48,9 +49,11 @@ app.onError((err, c) => {
   }, 500)
 });
 
-const routes =
-  app.route("/sessions", sessions)
-    .route("/chat", chat)
+// /auth stays public (OAuth callback). /sessions and /chat enforce auth in-route.
+const routes = app
+  .route("/auth", auth)
+  .route("/sessions", sessions)
+  .route("/chat", chat);
 
 export type AppType = typeof routes;
 

@@ -4,6 +4,8 @@ import { AgentsDialogContent } from "../dialogs/agents-dialog";
 import { ModelsDialogContent } from "../dialogs/models-dialog";
 import { SUPPORTED_CHAT_MODELS } from "@kloud-code/shared";
 import { clearLastSessionId } from "../../lib/last-session";
+import { performLogin } from "../../lib/oauth";
+import { clearAuth, isLoggedIn } from "../../lib/auth";
 
 export const COMMANDS: Command[] = [
   {
@@ -21,6 +23,10 @@ export const COMMANDS: Command[] = [
     value: "/history",
     description: "Browse and continue previous conversations",
     action: (ctx) => {
+      if (!isLoggedIn()) {
+        ctx.toast.error("Please login to view your history");
+        return;
+      }
       ctx.dialog.open({
         title: "Conversation History",
         description: "Open a previous conversation or search your history",
@@ -87,7 +93,15 @@ export const COMMANDS: Command[] = [
     value: "/login",
     description: "Sign in to sync conversations and settings",
     action: async (ctx) => {
-      // TODO
+      try {
+        await performLogin();
+        clearLastSessionId();
+        ctx.toast.success("Login successful");
+        ctx.navigate("/");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "An unknown error occurred";
+        ctx.toast.error(`Login failed: ${message}`);
+      }
     },
   },
 
@@ -96,7 +110,10 @@ export const COMMANDS: Command[] = [
     value: "/logout",
     description: "Sign out of your account",
     action: (ctx) => {
-      // TODO
+      clearAuth();
+      clearLastSessionId();
+      ctx.toast.success("Logged out successfully");
+      ctx.navigate("/");
     },
   },
 

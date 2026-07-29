@@ -1,6 +1,5 @@
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../providers/theme";
-import { InputLoader } from "./spinner";
 import {
   usePromptConfigMode,
   usePromptConfigModel,
@@ -106,7 +105,6 @@ export function StatusBar({ loading: loadingProp }: Props) {
       </box>
 
       <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
-        <InputLoader active={loading} />
         {Array.from({ length: HINT_SLOT_COUNT }, (_, slot) => (
           <Hint key={`hint-${slot}`} {...(hints[slot] ?? blank)} />
         ))}
