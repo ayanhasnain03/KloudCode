@@ -7,5 +7,10 @@ export type ToastOptions = {
   duration?: number;
 };
 
+export const DEFAULT_DURATION = 3200;
 
-export const DEFAULT_DURATION = 3000
+export const VARIANT_DURATION: Record<ToastVariant, number> = {
+  success: 2800,
+  error: 4200,
+  info: 3200,
+};

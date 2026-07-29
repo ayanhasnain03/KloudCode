@@ -55,9 +55,17 @@ export const SessionDialog = () => {
     const fetchSessions = async () => {
       try {
         const res = await apiClient.sessions.$get();
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : "Failed to load sessions";
+          throw new Error(message);
+        }
         const data = await res.json();
         if (!ignore) {
-          setSessions(data);
+          setSessions(Array.isArray(data) ? data : []);
           setLoading(false);
         }
       } catch (error) {

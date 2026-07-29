@@ -115,8 +115,8 @@ function ReasoningBlock({
   return (
     <box flexDirection="column" gap={0}>
       <box flexDirection="row" gap={1} alignItems="center">
-        <text fg={colors.thinking}>{streaming ? "✧" : "✦"}</text>
-        <text fg={colors.thinking} attributes={TextAttributes.DIM}>
+        <text fg={colors.thinking}>✦</text>
+        <text fg={colors.thinking} attributes={TextAttributes.BOLD}>
           {streaming ? "Thinking" : "Thought"}
         </text>
       </box>
@@ -142,9 +142,9 @@ function ToolsBlock({
     .map((tc) => {
       const mark = tc.status === "calling" ? "◉" : "✓";
       const args = formatToolArgs(tc);
-      const head = `${mark} ${formatToolName(tc.name)}${args ? ` ${args}` : ""}`;
+      const head = `${mark} ${formatToolName(tc.name)}${args ? `  ${args}` : ""}`;
       if (tc.status === "done" && tc.result) {
-        return `${head}\n  ↳ ${truncateResult(tc.result)}`;
+        return `${head}\n   ↳ ${truncateResult(tc.result)}`;
       }
       return head;
     })
@@ -196,17 +196,14 @@ export function BotMessage({
   const { colors } = useTheme();
 
   const boxWidth = Math.min(Math.max(width - 16, 52), 76);
-
-  const modeColor = mode === Mode.BUILD ? colors.success : colors.primary;
-  const accentColor = interrupted ? colors.error : modeColor;
-  const borderColor = interrupted ? colors.error : colors.borderSoft;
+  const modeColor = mode === Mode.BUILD ? colors.primary : colors.planMode;
+  const markColor = interrupted ? colors.error : colors.primary;
 
   const hasText = parts.some((p) => p.type === "text" && p.text.length > 0);
   const hasParts = parts.length > 0;
   const isEmptyStreaming = streaming && !hasParts;
   const isEmptyInterrupted = interrupted && !hasParts;
 
-  // Blink lives in a leaf — still causes BotMessage re-render via parent state.
   // Prefer a static cursor while tools dominate to cut scrollbox churn.
   const hasCallingTool = parts.some(
     (p) => p.type === "tool-call" && p.status === "calling",
@@ -221,132 +218,113 @@ export function BotMessage({
     return -1;
   })();
 
-  return (
-    <box flexDirection="row" width={boxWidth}>
-      <box width={1} backgroundColor={accentColor} />
+  const statusLabel = interrupted
+    ? "Interrupted"
+    : streaming
+      ? "Streaming"
+      : duration
+        ? duration
+        : null;
 
-      <box
-        flexGrow={1}
-        flexDirection="column"
-        border
-        borderStyle="rounded"
-        borderColor={borderColor}
-        backgroundColor={colors.surface}
-      >
+  return (
+    <box flexDirection="row" gap={1} width={boxWidth}>
+      <text fg={markColor} attributes={TextAttributes.BOLD}>
+        {interrupted ? "◼" : streaming ? "✧" : "✦"}
+      </text>
+
+      <box flexDirection="column" flexGrow={1} gap={1}>
         <box
-          paddingX={2}
-          paddingY={1}
-          backgroundColor={colors.thinkingBorder}
+          flexDirection="row"
           justifyContent="space-between"
           alignItems="center"
-          flexDirection="row"
+          width="100%"
         >
-          <box gap={1} flexDirection="row" alignItems="center">
-            <text fg={interrupted ? colors.error : colors.primary}>
-              {interrupted ? "◼" : streaming ? "✧" : "✦"}
-            </text>
+          <box flexDirection="row" gap={1} alignItems="center">
             <text fg={colors.text} attributes={TextAttributes.BOLD}>
               {model}
             </text>
+            <text fg={colors.textMuted}>·</text>
+            <text fg={modeColor} attributes={TextAttributes.BOLD}>
+              {interrupted ? "Interrupted" : mode === Mode.BUILD ? "Build" : "Plan"}
+            </text>
           </box>
 
-          <box gap={1} flexDirection="row" alignItems="center">
-            <text
-              fg={interrupted ? colors.error : modeColor}
-              attributes={TextAttributes.BOLD}
-            >
-              {interrupted ? "Interrupted" : mode}
-            </text>
-            <text fg={colors.textMuted}>
-              {interrupted
-                ? " "
-                : streaming
-                  ? "streaming"
-                  : duration
-                    ? `• ${duration}`
-                    : " "}
-            </text>
-          </box>
+          {statusLabel && !interrupted ? (
+            <text fg={colors.textMuted}>{statusLabel}</text>
+          ) : null}
         </box>
 
-        <box paddingX={2} paddingY={1} flexDirection="column" gap={1}>
-          {isEmptyStreaming ? (
-            <box flexDirection="row" gap={1} alignItems="center">
-              <Spinner active />
-              <text fg={colors.textMuted}>Working…</text>
-            </box>
-          ) : isEmptyInterrupted ? (
-            <text fg={colors.textGhost} attributes={TextAttributes.DIM}>
-              No response generated
-            </text>
-          ) : (
-            groups.map((group, groupIndex) => {
-              if (group.type === "reasoning") {
-                const text = group.parts
-                  .filter(
-                    (p): p is Extract<ClientMessagePart, { type: "reasoning" }> =>
-                      p.type === "reasoning",
-                  )
-                  .map((p) => p.text)
-                  .join("");
-                const isLastGroup = groupIndex === groups.length - 1;
-
-                return (
-                  <ReasoningBlock
-                    key={group.key}
-                    text={text}
-                    streaming={streaming && isLastGroup}
-                    colors={colors}
-                  />
-                );
-              }
-
-              if (group.type === "tool-call") {
-                const tools = group.parts.filter(
-                  (p): p is ClientToolCallPart => p.type === "tool-call",
-                );
-                return (
-                  <ToolsBlock key={group.key} tools={tools} colors={colors} />
-                );
-              }
-
+        {isEmptyStreaming ? (
+          <box flexDirection="row" gap={1} alignItems="center">
+            <Spinner active />
+            <text fg={colors.textMuted}>Working…</text>
+          </box>
+        ) : isEmptyInterrupted ? (
+          <text fg={colors.textMuted}>No response generated</text>
+        ) : (
+          groups.map((group, groupIndex) => {
+            if (group.type === "reasoning") {
               const text = group.parts
                 .filter(
-                  (p): p is Extract<ClientMessagePart, { type: "text" }> =>
-                    p.type === "text",
+                  (p): p is Extract<ClientMessagePart, { type: "reasoning" }> =>
+                    p.type === "reasoning",
                 )
                 .map((p) => p.text)
                 .join("");
-              const showCursor =
-                streaming &&
-                cursorVisible &&
-                groupIndex === lastTextGroupIndex;
+              const isLastGroup = groupIndex === groups.length - 1;
 
               return (
-                <TextBlock
+                <ReasoningBlock
                   key={group.key}
                   text={text}
-                  showCursor={showCursor}
-                  interrupted={interrupted}
+                  streaming={streaming && isLastGroup}
                   colors={colors}
                 />
               );
-            })
-          )}
+            }
 
-          <box
-            flexDirection="row"
-            gap={1}
-            alignItems="center"
-            height={interrupted && hasParts ? 1 : 0}
-          >
-            <text fg={colors.error} attributes={TextAttributes.DIM}>
-              {interrupted && hasParts ? "─" : " "}
-            </text>
-            <text fg={colors.textMuted} attributes={TextAttributes.DIM}>
-              {interrupted && hasParts ? "stopped before completion" : " "}
-            </text>
-          </box>
+            if (group.type === "tool-call") {
+              const tools = group.parts.filter(
+                (p): p is ClientToolCallPart => p.type === "tool-call",
+              );
+              return (
+                <ToolsBlock key={group.key} tools={tools} colors={colors} />
+              );
+            }
+
+            const text = group.parts
+              .filter(
+                (p): p is Extract<ClientMessagePart, { type: "text" }> =>
+                  p.type === "text",
+              )
+              .map((p) => p.text)
+              .join("");
+            const showCursor =
+              streaming &&
+              cursorVisible &&
+              groupIndex === lastTextGroupIndex;
+
+            return (
+              <TextBlock
+                key={group.key}
+                text={text}
+                showCursor={showCursor}
+                interrupted={interrupted}
+                colors={colors}
+              />
+            );
+          })
+        )}
+
+        <box
+          flexDirection="row"
+          gap={1}
+          alignItems="center"
+          height={interrupted && hasParts ? 1 : 0}
+        >
+          <text fg={colors.error}>
+            {interrupted && hasParts ? "Stopped before completion" : " "}
+          </text>
         </box>
       </box>
     </box>

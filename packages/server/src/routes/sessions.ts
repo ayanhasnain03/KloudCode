@@ -6,9 +6,7 @@ import { z } from "zod";
 import { findSupportedChatModel } from "@kloud-code/shared";
 import { db } from "@kloud-code/database";
 import { Role, Mode, MessageStatus } from "@kloud-code/database/enums";
-
-
-
+import { requireAuth, type AuthenticatedEnv } from "../middleware/require-auth";
 
 
 const createSessionSchema = z.object({
@@ -40,9 +38,15 @@ const createSessionValidator = zValidator("json", createSessionSchema, (result, 
 })
 
 
-const app = new Hono()
+const app = new Hono<AuthenticatedEnv>()
+  .use(requireAuth)
   .get("/", async (c) => {
+    const userId = c.get("userId");
+    if (!userId) {
+      return c.json({ error: "Unauthorized. Please login to continue." }, 401);
+    }
     const sessions = await db.session.findMany({
+      where: { userId },
       orderBy: {
         updatedAt: "desc",
       },
@@ -55,28 +59,30 @@ const app = new Hono()
       },
     });
     Sentry.logger.info("Listed session", {
-      count: sessions.length
+      count: sessions.length,
+      userId,
     });
     return c.json(sessions);
   })
   .get("/:id", async (c) => {
-    // await new Promise((resolve) => setTimeout(resolve, 1000));
-    // throw new HTTPException(404, { message: 'Mock error: session not found' });
-
     const id = c.req.param("id");
-    const session = await db.session.findUnique({
+    const userId = c.get("userId");
+    if (!userId) {
+      return c.json({ error: "Unauthorized. Please login to continue." }, 401);
+    }
+    const session = await db.session.findFirst({
       where: {
-        id
+        id,
+        userId,
       },
       include: {
         messages: true,
       },
     })
     if (!session) {
-
       Sentry.logger.warn("Session not found", {
         sessionId: id,
-        userId: "mock-user"
+        userId,
       })
 
       throw new HTTPException(404, { message: 'Session not found' });
@@ -87,13 +93,16 @@ const app = new Hono()
     return c.json(session);
   })
   .post("/", createSessionValidator, async (c) => {
-
+    const userId = c.get("userId");
+    if (!userId) {
+      return c.json({ error: "Unauthorized. Please login to continue." }, 401);
+    }
     const { initialMessage, ...data } = c.req.valid('json');
 
     const session = await db.session.create({
       data: {
         ...data,
-        userId: "mock-user-id",
+        userId,
         ...(initialMessage && {
           messages: {
             create: {
@@ -111,6 +120,7 @@ const app = new Hono()
     Sentry.logger.info("Created session", {
       sessionId: session.id,
       title: session.title,
+      userId,
     })
 
     return c.json(session, 201);

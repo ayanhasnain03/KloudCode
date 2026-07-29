@@ -13,6 +13,7 @@ import { Mode, MessageStatus } from "@kloud-code/database";
 import { messagePartsSchema, type ChatStreamEvent, type MessagePart, toolCallArgsSchema } from "@kloud-code/shared";
 import type { Prisma } from "@kloud-code/database"
 import { isSupportedChatModel, resolveChatModel } from "../lib/models";
+import { requireAuth, type AuthenticatedEnv } from "../middleware/require-auth";
 
 const submitSchema = z.object({
   content: z.string(),
@@ -317,13 +318,19 @@ async function streamAIResponse(
   }
 };
 
-const app = new Hono()
+const app = new Hono<AuthenticatedEnv>()
+  .use(requireAuth)
   .post("/:sessionId/resume", async (c) => {
     const sessionId = c.req.param("sessionId");
+    const userId = c.get("userId");
+    if (!userId) {
+      return c.json({ error: "Unauthorized. Please login to continue." }, 401);
+    }
 
-    const session = await db.session.findUnique({
+    const session = await db.session.findFirst({
       where: {
         id: sessionId,
+        userId,
       },
       include: {
         messages: {
@@ -416,13 +423,18 @@ const app = new Hono()
   })
   .post("/:sessionId", submitValidator, async (c) => {
     const sessionId = c.req.param("sessionId");
+    const userId = c.get("userId");
     if (!sessionId) return c.json({
       error: "Session not found"
     }, 404)
+    if (!userId) {
+      return c.json({ error: "Unauthorized. Please login to continue." }, 401);
+    }
 
-    const session = await db.session.findUnique({
+    const session = await db.session.findFirst({
       where: {
-        id: sessionId
+        id: sessionId,
+        userId,
       },
       include: {
         messages: {
